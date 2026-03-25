@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/shared/Logo";
-import { resetPassword, isSupabaseConfigured } from "@/lib/supabase";
+import { isSupabaseConfigured } from "@/lib/supabase";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -21,19 +21,29 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setLoading(true);
 
+    if (!isSupabaseConfigured()) {
+      // Demo mode — skip API call
+      setLoading(false);
+      setSent(true);
+      return;
+    }
+
     const redirectTo =
       typeof window !== "undefined"
         ? `${window.location.origin}/reset-password`
         : "/reset-password";
 
-    const { error } = await resetPassword(email, redirectTo);
-    setLoading(false);
-
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      await fetch("/api/email/send-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, redirectTo }),
+      });
+    } catch {
+      // Network error — still show success to avoid email enumeration
     }
 
+    setLoading(false);
     setSent(true);
   };
 

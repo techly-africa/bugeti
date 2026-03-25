@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { sendWelcomeEmail } from "@/lib/sendgrid";
-import { isSupabaseConfigured } from "@/lib/supabase";
 
 const SECRET = process.env.OTP_SECRET ?? "bugeti-otp-fallback";
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -44,16 +43,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Incorrect code" }, { status: 400 });
     }
 
-    // OTP verified — send welcome email
+    // OTP verified — send welcome email (non-fatal)
     try {
       await sendWelcomeEmail(email, displayName ?? email.split("@")[0]);
     } catch (err) {
-      // Allow verification to succeed even if email fails in demo/dev
-      if (process.env.NODE_ENV === "development" || !isSupabaseConfigured()) {
-        console.warn(`[AUTH] Welcome email failed for ${email}, but continuing.`);
-      } else {
-        throw err;
-      }
+      console.error(`[verify-otp] Welcome email failed for ${email}:`, err);
     }
 
     return NextResponse.json({ ok: true, email });
