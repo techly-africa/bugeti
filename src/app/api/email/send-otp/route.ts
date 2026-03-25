@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, randomInt } from "crypto";
 import { sendOtpEmail } from "@/lib/sendgrid";
-import { isSupabaseConfigured } from "@/lib/supabase";
 
 const SECRET = process.env.OTP_SECRET ?? "bugeti-otp-fallback";
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -23,19 +22,18 @@ export async function POST(req: NextRequest) {
     const issuedAt = Date.now();
     const token = signToken(email, otp, issuedAt);
 
+    let emailSent = true;
     try {
       await sendOtpEmail(email, otp);
     } catch (err) {
-      // In development or demo mode, log the OTP so the developer can see it
-      // and continue testing without real email configured.
-      if (process.env.NODE_ENV === "development" || !isSupabaseConfigured()) {
-        console.log(`[AUTH] OTP for ${email}: ${otp}`);
-      } else {
-        throw err;
-      }
+      emailSent = false;
+      // Always log OTP to server console so it's visible in Vercel/server logs
+      // during SendGrid setup / sender verification.
+      console.error("[send-otp] Email delivery failed:", err);
+      console.log(`[AUTH] OTP for ${email}: ${otp}`);
     }
 
-    return NextResponse.json({ token });
+    return NextResponse.json({ token, emailSent });
   } catch (err) {
     console.error("[send-otp]", err);
     return NextResponse.json({ error: "Failed to send OTP" }, { status: 500 });

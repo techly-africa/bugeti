@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { LogOut, Globe, Copy, Home, Loader2 } from "lucide-react";
+import { LogOut, Globe, Copy, Home, Loader2, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,11 +28,18 @@ export default function SettingsPage() {
   const resetAppData = useAppStore((s) => s.resetAppData);
   const router = useRouter();
 
+  const { setHousehold } = useAppStore();
+
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [memberName, setMemberName] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
   const [addingMember, setAddingMember] = useState(false);
+
+  // Household name editing
+  const [editingName, setEditingName] = useState(false);
+  const [householdNameDraft, setHouseholdNameDraft] = useState("");
+  const [savingName, setSavingName] = useState(false);
 
   const loadMembers = useCallback(async () => {
     if (!household) return;
@@ -136,6 +143,26 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveHouseholdName = async () => {
+    if (!household || !householdNameDraft.trim()) return;
+    setSavingName(true);
+    try {
+      await db.households.update(household.id, { name: householdNameDraft.trim() });
+      const updated = { ...household, name: householdNameDraft.trim() };
+      setHousehold(updated);
+      if (navigator.onLine && isSupabaseConfigured()) {
+        await supabase.from("households").update({ name: householdNameDraft.trim() }).eq("id", household.id);
+      }
+      toast.success("Household name updated.");
+      setEditingName(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to update household name.");
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     await clearAllData();
@@ -194,7 +221,36 @@ export default function SettingsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p className="font-semibold">{household.name}</p>
+              {editingName ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={householdNameDraft}
+                    onChange={(e) => setHouseholdNameDraft(e.target.value)}
+                    className="flex-1 h-8 text-sm font-semibold"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveHouseholdName();
+                      if (e.key === "Escape") setEditingName(false);
+                    }}
+                  />
+                  <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={handleSaveHouseholdName} disabled={savingName}>
+                    {savingName ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} className="text-primary" />}
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => setEditingName(false)}>
+                    <X size={14} />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold">{household.name}</p>
+                  <Button
+                    size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground"
+                    onClick={() => { setHouseholdNameDraft(household.name); setEditingName(true); }}
+                  >
+                    <Pencil size={13} />
+                  </Button>
+                </div>
+              )}
 
               {/* Members list */}
               {members.length > 0 && (

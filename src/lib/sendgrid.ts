@@ -1,6 +1,6 @@
 import sgMail from "@sendgrid/mail";
 
-const FROM_EMAIL = "noreply@bugeti.app";
+const FROM_EMAIL = "noreply@avel.africa";
 const FROM_NAME = "Bugeti";
 
 function init() {

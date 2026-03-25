@@ -1,9 +1,9 @@
 "use client";
 
 export const dynamic = "force-dynamic";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { PlusCircle, TrendingDown, TrendingUp, Wallet } from "lucide-react";
+import { Loader2, PlusCircle, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/layout/AppShell";
 import { BudgetSummaryCard } from "@/components/budget/BudgetSummaryCard";
@@ -43,6 +43,8 @@ export default function DashboardPage() {
   const currentMonth = new Date().getMonth();
   const isSchoolTerm = SCHOOL_TERM_MONTHS.has(currentMonth);
 
+  const [hasNoData, setHasNoData] = useState(false);
+
   // Load from IndexedDB on mount
   useEffect(() => {
     if (!user) {
@@ -56,13 +58,13 @@ export default function DashboardPage() {
         // Try to sync from Supabase before giving up
         const synced = await syncDown(u.id);
         if (!synced) {
-          globalThis.location.href = "/onboarding";
+          setHasNoData(true);
           return;
         }
         // If synced, re-fetch budgets
         const restoredBudgets = await db.budgets.toArray();
         if (restoredBudgets.length === 0) {
-          globalThis.location.href = "/onboarding";
+          setHasNoData(true);
           return;
         }
         // Continue with restored data
@@ -103,15 +105,30 @@ export default function DashboardPage() {
 
   const recentTxs = transactions.slice(0, 5);
 
-  if (!activeBudget) {
+  if (hasNoData) {
     return (
       <AppShell>
-        <div className="flex flex-col items-center justify-center h-64 gap-4">
-          <span className="text-5xl">📊</span>
-          <p className="text-muted-foreground text-sm">No budget yet</p>
-          <Button asChild>
-            <Link href="/onboarding">Create your first budget</Link>
+        <div className="flex flex-col items-center justify-center flex-1 h-[60vh] gap-3 px-4 text-center animate-in fade-in zoom-in duration-500">
+          <span className="text-6xl mb-2">👋</span>
+          <h2 className="text-2xl font-bold bg-gradient-to-br from-primary to-emerald-700 bg-clip-text text-transparent">
+            Welcome to Bugeti
+          </h2>
+          <p className="text-sm text-muted-foreground max-w-xs mb-6 leading-relaxed">
+            It looks like you don't have a budget set up yet. If you were invited by family, wait for your data to sync, or create a new budget now.
+          </p>
+          <Button asChild className="w-full max-w-xs h-12 text-base font-semibold shadow-lg shadow-primary/20">
+            <Link href="/onboarding">Create my first budget 🚀</Link>
           </Button>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!activeBudget || !stats || categories.length === 0) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={32} className="animate-spin text-primary" />
         </div>
       </AppShell>
     );

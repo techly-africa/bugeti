@@ -97,10 +97,14 @@ export default function AuthPage() {
         return;
       }
 
-      const { token } = await res.json();
+      const { token, emailSent } = await res.json();
       sessionStorage.setItem("otp_token", token);
       sessionStorage.setItem("otp_email", suEmail);
-      toast.success("Check your email for a verification code.");
+      if (emailSent === false) {
+        toast.warning("Email delivery failed — check Vercel logs for your OTP code.");
+      } else {
+        toast.success("Check your email for a verification code.");
+      }
       router.push("/verify");
     }
   };
