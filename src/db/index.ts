@@ -1,0 +1,60 @@
+import Dexie, { type EntityTable } from "dexie";
+import type {
+  Budget,
+  Category,
+  Household,
+  HouseholdMember,
+  ItineraryItem,
+  Transaction,
+  Trip,
+  UserProfile,
+} from "@/lib/types";
+
+// ─── Offline-first IndexedDB via Dexie ───────────────────────────────────────
+
+class BugetiDB extends Dexie {
+  profiles!: EntityTable<UserProfile, "id">;
+  households!: EntityTable<Household, "id">;
+  members!: EntityTable<HouseholdMember, "id">;
+  budgets!: EntityTable<Budget, "id">;
+  categories!: EntityTable<Category, "id">;
+  transactions!: EntityTable<Transaction, "id">;
+  trips!: EntityTable<Trip, "id">;
+  itinerary_items!: EntityTable<ItineraryItem, "id">;
+
+  constructor() {
+    super("bugeti");
+    this.version(1).stores({
+      profiles: "id, email",
+      households: "id, created_by",
+      members: "id, household_id, user_id",
+      budgets: "id, household_id, start_date, end_date",
+      categories: "id, budget_id, sort_order",
+      transactions: "id, category_id, budget_id, household_id, date, synced",
+    });
+    this.version(2).stores({
+      profiles: "id, email",
+      households: "id, created_by",
+      members: "id, household_id, user_id",
+      budgets: "id, household_id, start_date, end_date",
+      categories: "id, budget_id, sort_order",
+      transactions: "id, category_id, budget_id, household_id, date, synced",
+      trips: "id, household_id, status, start_date",
+      itinerary_items: "id, trip_id, day",
+    });
+  }
+}
+
+export const db = new BugetiDB();
+
+// ─── Sync helpers ─────────────────────────────────────────────────────────────
+
+/** Returns all transactions that haven't been pushed to Supabase yet */
+export async function getUnsynced(): Promise<Transaction[]> {
+  return db.transactions.where("synced").equals(0).toArray();
+}
+
+/** Mark a transaction as synced */
+export async function markSynced(id: string) {
+  await db.transactions.update(id, { synced: true });
+}
