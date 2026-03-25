@@ -23,6 +23,7 @@ import {
 import { AmountInput } from "@/components/shared/AmountInput";
 import { db } from "@/db";
 import { generateId, formatRWF } from "@/lib/constants";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useAppStore, useUser } from "@/store";
 import type { Budget, Category } from "@/lib/types";
 
@@ -48,6 +49,7 @@ interface Allocation {
 interface BudgetGroup {
   budget: Budget;
   categories: Category[];
+  memberName: string; // display name of the budget owner
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -79,35 +81,111 @@ export function PocketMoneySplitSheet({
   ]);
   const [saving, setSaving] = useState(false);
 
-  // Load all budgets + their categories when the sheet opens
+  // Load private budgets + their categories + member names when the sheet opens
   useEffect(() => {
     if (!open) return;
     async function load() {
-      const budgets = await db.budgets
+      // ── 1. Local data (always available) ──────────────────────────────────
+      const localBudgets = (
+        await db.budgets.where("household_id").equals(householdId).toArray()
+      ).filter((b) => b.account_type === "private");
+
+      const localMembers = await db.members
         .where("household_id")
         .equals(householdId)
         .toArray();
 
+      // ── 2. Remote data (if Supabase is reachable) ─────────────────────────
+      let remoteBudgets: any[] = [];
+      let remoteMembers: any[] = [];
+
+      if (navigator.onLine && isSupabaseConfigured()) {
+        try {
+          const [{ data: rb }, { data: rm }] = await Promise.all([
+            supabase
+              .from("budgets")
+              .select("*")
+              .eq("household_id", householdId)
+              .eq("account_type", "private"),
+            supabase
+              .from("household_members")
+              .select("*")
+              .eq("household_id", householdId),
+          ]);
+          remoteBudgets = rb ?? [];
+          remoteMembers = rm ?? [];
+
+          // Persist remote data locally so future opens work offline
+          if (remoteBudgets.length > 0)
+            await db.budgets.bulkPut(remoteBudgets);
+          if (remoteMembers.length > 0)
+            await db.members.bulkPut(remoteMembers);
+        } catch (e) {
+          console.warn("[PocketMoneySplit] Remote fetch failed, using local:", e);
+        }
+      }
+
+      // ── 3. Merge + deduplicate ─────────────────────────────────────────────
+      const budgetMap = new Map<string, any>();
+      [...localBudgets, ...remoteBudgets].forEach((b) => budgetMap.set(b.id, b));
+      const privateBudgets = Array.from(budgetMap.values());
+
+      const memberMap = new Map<string, any>();
+      [...localMembers, ...remoteMembers].forEach((m) => memberMap.set(m.id, m));
+      const members = Array.from(memberMap.values());
+
+      // ── 3.5. Ensure every member has a private budget ─────────────────────
+      const budgetOwnerIds = new Set(privateBudgets.map((b: any) => b.created_by));
+      const membersWithoutBudget = members.filter((m: any) => !budgetOwnerIds.has(m.user_id));
+
+      for (const member of membersWithoutBudget) {
+        const now = new Date();
+        const newBudget = {
+          id: generateId(),
+          household_id: householdId,
+          name: `${member.display_name}'s Budget`,
+          period: "monthly" as const,
+          budget_type: "monthly" as const,
+          account_type: "private" as const,
+          status: "active" as const,
+          start_date: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0],
+          end_date: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0],
+          currency: "RWF" as const,
+          created_by: member.user_id,
+          created_at: now.toISOString(),
+        };
+        await db.budgets.add(newBudget);
+        privateBudgets.push(newBudget);
+        if (navigator.onLine && isSupabaseConfigured()) {
+          supabase.from("budgets").upsert(newBudget).then(null, () => {});
+        }
+      }
+
+      // ── 4. Build groups ────────────────────────────────────────────────────
       const result: BudgetGroup[] = await Promise.all(
-        budgets.map(async (b) => ({
-          budget: b,
-          categories: await db.categories
-            .where("budget_id")
-            .equals(b.id)
-            .sortBy("sort_order"),
-        }))
+        privateBudgets.map(async (b) => {
+          const member = members.find((m) => m.user_id === b.created_by);
+          return {
+            budget: b,
+            memberName: member?.display_name ?? b.name,
+            categories: await db.categories
+              .where("budget_id")
+              .equals(b.id)
+              .sortBy("sort_order"),
+          };
+        })
       );
       setGroups(result);
     }
     load();
   }, [open, householdId]);
 
-  // Build flat list of selectable targets for rendering
-  const targets: TargetItem[] = groups.flatMap(({ budget, categories }) => {
+  // Build flat list of selectable targets — private budgets only, labelled by member name
+  const targets: TargetItem[] = groups.flatMap(({ budget, categories, memberName }) => {
     const budgetItem: TargetItem = {
       key: `budget:${budget.id}`,
-      icon: budget.account_type === "private" ? "🔒" : "🏠",
-      label: budget.name,
+      icon: "👤",
+      label: memberName,
       budgetId: budget.id,
     };
     const catItems: TargetItem[] = categories.map((c) => ({
@@ -232,11 +310,10 @@ export function PocketMoneySplitSheet({
 
         {/* Remaining indicator */}
         <div
-          className={`flex items-center justify-between rounded-xl px-4 py-3 mb-5 text-sm font-medium ${
-            isOver
+          className={`flex items-center justify-between rounded-xl px-4 py-3 mb-5 text-sm font-medium ${isOver
               ? "bg-red-50 border border-red-200 text-red-700"
               : "bg-green-50 border border-green-200 text-green-700"
-          }`}
+            }`}
         >
           <span>Available</span>
           <span className="font-bold">{formatRWF(remaining)}</span>
@@ -270,23 +347,22 @@ export function PocketMoneySplitSheet({
                   <SelectContent>
                     {groups.length === 0 ? (
                       <SelectItem value="__empty__" disabled>
-                        No budgets found
+                        No personal budgets found — members need a private budget
                       </SelectItem>
                     ) : (
-                      groups.map(({ budget, categories }) => (
+                      groups.map(({ budget, categories, memberName }) => (
                         <SelectGroup key={budget.id}>
-                          {/* Budget itself as a target */}
+                          {/* Member name as group label */}
                           <SelectLabel className="flex items-center gap-1.5 font-semibold text-foreground">
-                            {budget.account_type === "private" ? "🔒" : "🏠"}{" "}
-                            {budget.name}
+                            👤 {memberName}
                           </SelectLabel>
                           <SelectItem value={`budget:${budget.id}`}>
                             <span className="flex items-center gap-1.5 pl-2 text-muted-foreground text-xs">
-                              Entire budget (no category)
+                              Personal budget (top-level)
                             </span>
                           </SelectItem>
 
-                          {/* Categories within that budget */}
+                          {/* Categories within that private budget */}
                           {categories.map((c) => (
                             <SelectItem
                               key={c.id}

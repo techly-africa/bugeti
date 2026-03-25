@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { AppShell } from "@/components/layout/AppShell";
 import { useT } from "@/hooks/useT";
 import { useAppStore, useHousehold, useLang, useUser } from "@/store";
-import { signOut, registerMemberAccount } from "@/lib/supabase";
+import { signOut, registerMemberAccount, supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { db, clearAllData } from "@/db";
 import { generateId } from "@/lib/constants";
@@ -56,14 +56,51 @@ export default function SettingsPage() {
       return;
     }
 
+    const memberId = generateId();
     await db.members.add({
-      id: generateId(),
+      id: memberId,
       household_id: household.id,
       user_id: userId,
       role: "member",
       display_name: memberName,
       joined_at: new Date().toISOString(),
     });
+
+    // Auto-create a private budget for the new member
+    const now = new Date();
+    const privateBudget = {
+      id: generateId(),
+      household_id: household.id,
+      name: `${memberName}'s Budget`,
+      period: "monthly" as const,
+      budget_type: "monthly" as const,
+      account_type: "private" as const,
+      status: "active" as const,
+      start_date: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0],
+      end_date: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0],
+      currency: "RWF" as const,
+      created_by: userId,
+      created_at: now.toISOString(),
+    };
+    await db.budgets.add(privateBudget);
+
+    if (navigator.onLine && isSupabaseConfigured()) {
+      try {
+        await Promise.all([
+          supabase.from("household_members").upsert({
+            id: memberId,
+            household_id: household.id,
+            user_id: userId,
+            role: "member",
+            display_name: memberName,
+            joined_at: new Date().toISOString(),
+          }),
+          supabase.from("budgets").upsert(privateBudget),
+        ]);
+      } catch (syncErr) {
+        console.warn("[Settings] Cloud sync failed:", syncErr);
+      }
+    }
 
     toast.success(`${memberName} has been added to ${household.name}.`);
     setMemberName("");

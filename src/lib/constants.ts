@@ -21,6 +21,48 @@ export const DEFAULT_CATEGORIES: Omit<
   { name: "Other", name_rw: "Ibindi", planned_amount: 0, icon: "📦", color: "#6b7280", sort_order: 12, parent_id: null, level: 0 },
 ];
 
+// ─── 50/30/20 Rule — category bucket classification ──────────────────────────
+// Keyed by the English category name from DEFAULT_CATEGORIES.
+// "needs"   → 50% of income (essential, non-negotiable)
+// "wants"   → 30% of income (discretionary)
+// "savings" → 20% of income (future / debt repayment)
+
+export type BudgetRule = "needs" | "wants" | "savings";
+
+export const CATEGORY_RULES: Record<string, BudgetRule> = {
+  "Food & Groceries":  "needs",
+  "Transport":         "needs",
+  "School Fees":       "needs",
+  "Health":            "needs",
+  "Rent":              "needs",
+  "Utilities":         "needs",
+  "Airtime & Internet":"needs",
+  "Kids Expenses":     "needs",
+  "Househelp":         "wants",
+  "Pocket Money":      "wants",
+  "Entertainment":     "wants",
+  "Clothing":          "wants",
+  "Other":             "wants",
+};
+
+export const RULE_LABELS: Record<BudgetRule, string> = {
+  needs:   "Needs",
+  wants:   "Wants",
+  savings: "Savings",
+};
+
+export const RULE_COLORS: Record<BudgetRule, string> = {
+  needs:   "bg-blue-100 text-blue-700",
+  wants:   "bg-orange-100 text-orange-700",
+  savings: "bg-green-100 text-green-700",
+};
+
+export const RULE_TARGETS: Record<BudgetRule, number> = {
+  needs:   0.50,
+  wants:   0.30,
+  savings: 0.20,
+};
+
 // ─── RWF Formatting ───────────────────────────────────────────────────────────
 
 export function formatRWF(amount: number): string {

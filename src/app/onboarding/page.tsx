@@ -3,13 +3,22 @@
 export const dynamic = "force-dynamic";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, ChevronRight, Users, User, Plus, X, Pencil } from "lucide-react";
+import { Loader2, ChevronRight, Users, User, Plus, X, Pencil, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AmountInput } from "@/components/shared/AmountInput";
-import { DEFAULT_CATEGORIES, generateId, generateInviteCode } from "@/lib/constants";
+import {
+  DEFAULT_CATEGORIES,
+  generateId,
+  generateInviteCode,
+  CATEGORY_RULES,
+  RULE_LABELS,
+  RULE_COLORS,
+  RULE_TARGETS,
+  formatRWF,
+} from "@/lib/constants";
 import { useAppStore, useUser } from "@/store";
 import { db } from "@/db";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
@@ -17,7 +26,9 @@ import { useT } from "@/hooks/useT";
 import { Category } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type Step = "household" | "budget" | "categories" | "done";
+type Step = "household" | "income" | "categories";
+
+const STEPS: Step[] = ["household", "income", "categories"];
 
 export default function OnboardingPage() {
   const t = useT();
@@ -27,19 +38,21 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<Step>("household");
   const [loading, setLoading] = useState(false);
 
-  // Household
+  // ── Step 1: Household ───────────────────────────────────────────────────────
   const [householdType, setHouseholdType] = useState<"individual" | "family">("individual");
   const [householdName, setHouseholdName] = useState(
     user ? `${user.display_name}'s Budget` : "My Budget"
   );
 
-  // Budget
-  const [budgetName, setBudgetName] = useState("March 2026 Budget");
-  const [budgetPeriod, setBudgetPeriod] = useState<"monthly" | "weekly">("monthly");
+  // ── Step 2: Income ──────────────────────────────────────────────────────────
+  const now = new Date();
+  const monthName = now.toLocaleString("en", { month: "long" });
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
   const [revenueSource, setRevenueSource] = useState("");
-  const [revenueDuration, setRevenueDuration] = useState("");
+  const [budgetPeriod, setBudgetPeriod] = useState<"monthly" | "weekly">("monthly");
+  const [budgetName, setBudgetName] = useState(`${monthName} ${now.getFullYear()} Budget`);
 
-  // Categories — dynamic list
+  // ── Step 3: Categories ──────────────────────────────────────────────────────
   const [categoriesList, setCategoriesList] = useState(
     DEFAULT_CATEGORIES.map((c, i) => ({
       ...c,
@@ -48,20 +61,18 @@ export default function OnboardingPage() {
       planned_amount: 0,
     }))
   );
-
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const toggleCat = (id: string) => {
+  // ── Category helpers ────────────────────────────────────────────────────────
+  const toggleCat = (id: string) =>
     setCategoriesList((prev) =>
       prev.map((c) => (c.id === id ? { ...c, selected: !c.selected } : c))
     );
-  };
 
-  const updateCat = (id: string, updates: Partial<typeof categoriesList[0]>) => {
+  const updateCat = (id: string, updates: Partial<typeof categoriesList[0]>) =>
     setCategoriesList((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...updates } : c))
     );
-  };
 
   const addCategory = () => {
     const newCat = {
@@ -78,10 +89,42 @@ export default function OnboardingPage() {
     setEditingId(newCat.id);
   };
 
-  const removeCategory = (id: string) => {
+  const removeCategory = (id: string) =>
     setCategoriesList(categoriesList.filter((c) => c.id !== id));
+
+  // ── 50/30/20 auto-fill ──────────────────────────────────────────────────────
+  const apply503020 = () => {
+    if (!monthlyIncome) {
+      toast.error("Enter your monthly income first");
+      return;
+    }
+    setCategoriesList((prev) => {
+      const bucketCounts = { needs: 0, wants: 0, savings: 0 };
+      prev.forEach((c) => {
+        if (!c.selected) return;
+        bucketCounts[CATEGORY_RULES[c.name] ?? "wants"]++;
+      });
+      return prev.map((c) => {
+        if (!c.selected) return c;
+        const rule = CATEGORY_RULES[c.name] ?? "wants";
+        const share = bucketCounts[rule] > 0
+          ? Math.round((monthlyIncome * RULE_TARGETS[rule]) / bucketCounts[rule])
+          : 0;
+        return { ...c, planned_amount: share };
+      });
+    });
+    toast.success("Amounts filled using 50/30/20 rule");
   };
 
+  // ── 50/30/20 live breakdown ─────────────────────────────────────────────────
+  const selectedCats = categoriesList.filter((c) => c.selected);
+  const bucketTotals = { needs: 0, wants: 0, savings: 0 };
+  selectedCats.forEach((c) => {
+    bucketTotals[CATEGORY_RULES[c.name] ?? "wants"] += c.planned_amount || 0;
+  });
+  const totalPlanned = Object.values(bucketTotals).reduce((a, b) => a + b, 0);
+
+  // ── Save ────────────────────────────────────────────────────────────────────
   const handleFinish = async () => {
     if (!user) return;
     const u = user;
@@ -91,7 +134,6 @@ export default function OnboardingPage() {
       const householdId = generateId();
       const budgetId = generateId();
 
-      // Save household to IndexedDB
       const household = {
         id: householdId,
         name: householdName,
@@ -101,7 +143,6 @@ export default function OnboardingPage() {
       };
       await db.households.add(household);
 
-      // Save household member
       await db.members.add({
         id: generateId(),
         household_id: householdId,
@@ -111,77 +152,49 @@ export default function OnboardingPage() {
         joined_at: new Date().toISOString(),
       });
 
-      // Save budget
-      const now = new Date();
+      const n = new Date();
       const budget = {
         id: budgetId,
         household_id: householdId,
         name: budgetName,
         period: budgetPeriod,
-        start_date: new Date(now.getFullYear(), now.getMonth(), 1)
-          .toISOString()
-          .split("T")[0],
-        end_date: new Date(now.getFullYear(), now.getMonth() + 1, 0)
-          .toISOString()
-          .split("T")[0],
+        start_date: new Date(n.getFullYear(), n.getMonth(), 1).toISOString().split("T")[0],
+        end_date: new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().split("T")[0],
         currency: "RWF" as const,
         budget_type: "monthly" as const,
         account_type: "common" as const,
         status: "active" as const,
         revenue_source: revenueSource || undefined,
-        revenue_duration: revenueDuration || undefined,
         created_by: u.id,
         created_at: new Date().toISOString(),
       };
       await db.budgets.add(budget);
 
-      // Save selected categories
-      const finalCats: Category[] = categoriesList
-        .filter((c) => c.selected)
-        .map(({ selected, ...rest }) => ({
-          ...rest,
-          id: rest.id.startsWith("local_") ? generateId() : rest.id,
-          budget_id: budgetId,
-        })) as Category[];
+      const finalCats: Category[] = selectedCats.map(({ selected, ...rest }) => ({
+        ...rest,
+        id: rest.id.startsWith("local_") ? generateId() : rest.id,
+        budget_id: budgetId,
+      })) as Category[];
       await db.categories.bulkAdd(finalCats);
 
-      // ─── Save to Supabase (if online & configured) ───
+      // Cloud sync
       if (typeof navigator !== "undefined" && navigator.onLine && isSupabaseConfigured()) {
         try {
-          // 1. Profile sync — ensure it exists
           await supabase.from("profiles").upsert({
-            id: u.id,
-            email: u.email,
-            display_name: u.display_name,
-            preferred_language: "en",
+            id: u.id, email: u.email, display_name: u.display_name, preferred_language: "en",
           });
-
-          // 2. Household
           await supabase.from("households").insert(household);
-
-          // 3. Member
           await supabase.from("household_members").insert({
-            id: generateId(),
-            household_id: householdId,
-            user_id: u.id,
-            role: "owner",
-            display_name: u.display_name,
+            id: generateId(), household_id: householdId,
+            user_id: u.id, role: "owner", display_name: u.display_name,
           });
-
-          // 4. Budget
           await supabase.from("budgets").insert(budget);
-
-          // 5. Categories
-          if (finalCats.length > 0) {
-            await supabase.from("categories").insert(finalCats);
-          }
+          if (finalCats.length > 0) await supabase.from("categories").insert(finalCats);
         } catch (syncErr) {
           console.error("Cloud sync failed during onboarding:", syncErr);
-          // Non-blocking: background sync or retry later
         }
       }
 
-      // Update store
       setHousehold(household);
       setActiveBudget(budget);
       setCategories(finalCats);
@@ -196,28 +209,27 @@ export default function OnboardingPage() {
     }
   };
 
+  // ── Progress dot index ──────────────────────────────────────────────────────
+  const stepIdx = STEPS.indexOf(step);
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-background p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-linear-to-br from-green-50 to-background p-4">
       <div className="w-full max-w-sm space-y-6">
+
         {/* Progress dots */}
         <div className="flex justify-center gap-2">
-          {(["household", "budget", "categories"] as Step[]).map((s) => (
+          {STEPS.map((s, i) => (
             <div
               key={s}
               className={cn(
-                "w-2 h-2 rounded-full transition-all",
-                step === s
-                  ? "bg-primary w-6"
-                  : ["household", "budget", "categories"].indexOf(s) <
-                    ["household", "budget", "categories"].indexOf(step)
-                    ? "bg-primary"
-                    : "bg-muted"
+                "h-2 rounded-full transition-all duration-300",
+                step === s ? "bg-primary w-6" : i < stepIdx ? "bg-primary w-2" : "bg-muted w-2"
               )}
             />
           ))}
         </div>
 
-        {/* Step: Household */}
+        {/* ── Step 1: Who is this for ─────────────────────────────────────── */}
         {step === "household" && (
           <Card>
             <CardHeader>
@@ -225,30 +237,23 @@ export default function OnboardingPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setHouseholdType("individual")}
-                  className={cn(
-                    "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all",
-                    householdType === "individual"
-                      ? "border-primary bg-primary/5"
-                      : "border-muted"
-                  )}
-                >
-                  <User size={28} className="text-primary" />
-                  <span className="text-sm font-medium">Just me</span>
-                </button>
-                <button
-                  onClick={() => setHouseholdType("family")}
-                  className={cn(
-                    "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all",
-                    householdType === "family"
-                      ? "border-primary bg-primary/5"
-                      : "border-muted"
-                  )}
-                >
-                  <Users size={28} className="text-primary" />
-                  <span className="text-sm font-medium">Family</span>
-                </button>
+                {(["individual", "family"] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setHouseholdType(type)}
+                    className={cn(
+                      "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all",
+                      householdType === type ? "border-primary bg-primary/5" : "border-muted"
+                    )}
+                  >
+                    {type === "individual"
+                      ? <User size={28} className="text-primary" />
+                      : <Users size={28} className="text-primary" />}
+                    <span className="text-sm font-medium">
+                      {type === "individual" ? "Just me" : "Family"}
+                    </span>
+                  </button>
+                ))}
               </div>
 
               <div className="space-y-1.5">
@@ -260,75 +265,113 @@ export default function OnboardingPage() {
                 />
               </div>
 
-              <Button className="w-full" onClick={() => setStep("budget")}>
+              <Button className="w-full" onClick={() => setStep("income")}>
                 {t("next")} <ChevronRight size={16} />
               </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* Step: Budget setup */}
-        {step === "budget" && (
+        {/* ── Step 2: Income ──────────────────────────────────────────────── */}
+        {step === "income" && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Set up your first budget</CardTitle>
+              <CardTitle className="text-lg">What's your monthly income?</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Your budget is built around the money you have. We'll use this to suggest smart amounts for each category.
+              </p>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
+
+              {/* Big income input */}
               <div className="space-y-1.5">
-                <Label>{t("budgetName")}</Label>
-                <Input
-                  value={budgetName}
-                  onChange={(e) => setBudgetName(e.target.value)}
+                <Label className="text-base font-semibold">Monthly income (RWF)</Label>
+                <AmountInput
+                  value={monthlyIncome}
+                  onChange={setMonthlyIncome}
+                  className="text-lg h-12"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <Label>{t("period")}</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(["monthly", "weekly"] as const).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setBudgetPeriod(p)}
-                      className={cn(
-                        "py-2 px-4 rounded-lg border text-sm font-medium transition-all",
-                        budgetPeriod === p
-                          ? "border-primary bg-primary/5 text-primary"
-                          : "border-muted text-muted-foreground"
-                      )}
-                    >
-                      {t(p)}
-                    </button>
+              {/* 50/30/20 preview */}
+              {monthlyIncome > 0 && (
+                <div className="rounded-xl border bg-muted/40 p-4 space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    50 / 30 / 20 breakdown
+                  </p>
+                  {(["needs", "wants", "savings"] as const).map((rule) => (
+                    <div key={rule} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", RULE_COLORS[rule])}>
+                          {RULE_LABELS[rule]}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {Math.round(RULE_TARGETS[rule] * 100)}%
+                        </span>
+                      </div>
+                      <span className="font-semibold tabular-nums">
+                        {formatRWF(Math.round(monthlyIncome * RULE_TARGETS[rule]))}
+                      </span>
+                    </div>
                   ))}
+                  {/* Bar */}
+                  <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
+                    <div className="bg-blue-400" style={{ width: "50%" }} />
+                    <div className="bg-orange-400" style={{ width: "30%" }} />
+                    <div className="bg-green-500" style={{ width: "20%" }} />
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="space-y-3 pt-2 border-t mt-4">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  Revenue (Optional)
-                </p>
+              {/* Source & period */}
+              <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label>Source of funds</Label>
+                  <Label>Source of income</Label>
                   <Input
                     value={revenueSource}
                     onChange={(e) => setRevenueSource(e.target.value)}
                     placeholder="e.g. Salary, Business, MoMo transfer"
                   />
                 </div>
+
                 <div className="space-y-1.5">
-                  <Label>Expected for how long?</Label>
+                  <Label>{t("period")}</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["monthly", "weekly"] as const).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setBudgetPeriod(p)}
+                        className={cn(
+                          "py-2 px-4 rounded-lg border text-sm font-medium transition-all",
+                          budgetPeriod === p
+                            ? "border-primary bg-primary/5 text-primary"
+                            : "border-muted text-muted-foreground"
+                        )}
+                      >
+                        {t(p)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Budget name</Label>
                   <Input
-                    value={revenueDuration}
-                    onChange={(e) => setRevenueDuration(e.target.value)}
-                    placeholder="e.g. Recurring monthly, 3 months"
+                    value={budgetName}
+                    onChange={(e) => setBudgetName(e.target.value)}
                   />
                 </div>
               </div>
 
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setStep("household")}>
-                  {t("back")}
-                </Button>
-                <Button className="flex-1" onClick={() => setStep("categories")}>
+                <Button variant="outline" onClick={() => setStep("household")}>{t("back")}</Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    if (monthlyIncome > 0) apply503020();
+                    setStep("categories");
+                  }}
+                >
                   {t("next")} <ChevronRight size={16} />
                 </Button>
               </div>
@@ -336,107 +379,152 @@ export default function OnboardingPage() {
           </Card>
         )}
 
-        {/* Step: Categories & amounts */}
+        {/* ── Step 3: Categories ──────────────────────────────────────────── */}
         {step === "categories" && (
-          <Card><CardHeader>
-            <CardTitle className="text-lg">Choose your categories</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Select what matters & set amounts (you can edit later)
-            </p>
-          </CardHeader><CardContent className="space-y-3">
-              <div className="max-h-[55vh] overflow-y-auto space-y-2 pr-1">
-                {categoriesList.map((cat) => (
-                  <div
-                    key={cat.id}
-                    className={cn(
-                      "rounded-xl border p-3 transition-all",
-                      cat.selected
-                        ? "border-primary bg-primary/5"
-                        : "border-muted opacity-60"
-                    )}
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <CardTitle className="text-lg">Your spending categories</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Adjust amounts or add your own
+                  </p>
+                </div>
+                {monthlyIncome > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 gap-1 text-xs border-primary text-primary"
+                    onClick={apply503020}
                   >
-                    {editingId === cat.id ? (
-                      <div className="space-y-2 animate-in slide-in-from-top-1">
-                        <div className="flex gap-2">
+                    <Sparkles size={12} /> 50/30/20
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="max-h-[50vh] overflow-y-auto space-y-2 pr-1">
+                {categoriesList.map((cat) => {
+                  const rule = CATEGORY_RULES[cat.name] ?? "wants";
+                  return (
+                    <div
+                      key={cat.id}
+                      className={cn(
+                        "rounded-xl border p-3 transition-all",
+                        cat.selected ? "border-primary bg-primary/5" : "border-muted opacity-60"
+                      )}
+                    >
+                      {editingId === cat.id ? (
+                        <div className="flex gap-2 animate-in slide-in-from-top-1">
                           <Input
                             value={cat.icon}
                             onChange={(e) => updateCat(cat.id, { icon: e.target.value })}
-                            className="w-12 px-0 text-center text-xl" />
+                            className="w-12 px-0 text-center text-xl"
+                          />
                           <Input
                             value={cat.name}
                             onChange={(e) => updateCat(cat.id, { name: e.target.value })}
                             className="flex-1"
-                            placeholder="Category Name" />
+                            placeholder="Category Name"
+                          />
                           <Button size="icon" variant="ghost" onClick={() => setEditingId(null)}>
                             <X size={16} />
                           </Button>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-3">
-                        <button onClick={() => toggleCat(cat.id)} className="flex items-center gap-2 flex-1 text-left">
-                          <span className="text-xl">{cat.icon}</span>
-                          <span className="text-sm font-medium">{cat.name}</span>
-                        </button>
-                        {cat.selected ? (
-                          <div className="flex items-center gap-2">
-                            <AmountInput
-                              value={cat.planned_amount}
-                              onChange={(v) => updateCat(cat.id, { planned_amount: v })}
-                              className="w-32" />
-                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setEditingId(cat.id)}>
-                              <Pencil size={12} />
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleCat(cat.id)}
+                            className="flex items-center gap-2 flex-1 text-left min-w-0"
+                          >
+                            <span className="text-xl shrink-0">{cat.icon}</span>
+                            <div className="min-w-0">
+                              <span className="text-sm font-medium block truncate">{cat.name}</span>
+                              <span className={cn("text-xs px-1.5 py-0.5 rounded-full font-medium", RULE_COLORS[rule])}>
+                                {RULE_LABELS[rule]}
+                              </span>
+                            </div>
+                          </button>
+                          {cat.selected ? (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <AmountInput
+                                value={cat.planned_amount}
+                                onChange={(v) => updateCat(cat.id, { planned_amount: v })}
+                                className="w-28"
+                              />
+                              <Button
+                                size="icon" variant="ghost" className="h-7 w-7"
+                                onClick={() => setEditingId(cat.id)}
+                              >
+                                <Pencil size={11} />
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="icon" variant="ghost" className="h-7 w-7 text-destructive shrink-0"
+                              onClick={() => removeCategory(cat.id)}
+                            >
+                              <X size={13} />
                             </Button>
-                          </div>
-                        ) : (
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => removeCategory(cat.id)}>
-                            <X size={14} />
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
 
                 <Button
                   variant="outline"
-                  className="w-full border-dashed py-6 rounded-xl text-muted-foreground hover:text-primary hover:border-primary transition-all"
+                  className="w-full border-dashed py-5 rounded-xl text-muted-foreground hover:text-primary hover:border-primary transition-all"
                   onClick={addCategory}
                 >
-                  <Plus size={16} className="mr-2" /> Add custom category
+                  <Plus size={14} className="mr-2" /> Add custom category
                 </Button>
               </div>
 
-              <div className="pt-2 border-t text-xs text-muted-foreground text-center">
-                Total planned:{" "}
-                <span className="font-bold text-foreground">
-                  {categoriesList
-                    .filter((c) => c.selected)
-                    .reduce((sum, c) => sum + (c.planned_amount || 0), 0)
-                    .toLocaleString("en-RW")}{" "}
-                  RWF
-                </span>
+              {/* 50/30/20 breakdown bar */}
+              <div className="pt-2 border-t space-y-2">
+                <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
+                  {(["needs", "wants", "savings"] as const).map((rule) => {
+                    const pct = totalPlanned > 0
+                      ? Math.round((bucketTotals[rule] / totalPlanned) * 100)
+                      : 0;
+                    const barColor = rule === "needs" ? "bg-blue-400" : rule === "wants" ? "bg-orange-400" : "bg-green-500";
+                    return <div key={rule} className={barColor} style={{ width: `${pct}%` }} />;
+                  })}
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  {(["needs", "wants", "savings"] as const).map((rule) => {
+                    const pct = totalPlanned > 0
+                      ? Math.round((bucketTotals[rule] / totalPlanned) * 100)
+                      : 0;
+                    return (
+                      <span key={rule} className={cn("font-medium", RULE_COLORS[rule].replace("bg-", "text-").split(" ")[0])}>
+                        {RULE_LABELS[rule]} {pct}%
+                      </span>
+                    );
+                  })}
+                  <span className="font-bold text-foreground tabular-nums">
+                    {totalPlanned.toLocaleString("en-RW")} RWF
+                  </span>
+                </div>
               </div>
 
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setStep("budget")}>
-                  {t("back")}
-                </Button>
+                <Button variant="outline" onClick={() => setStep("income")}>{t("back")}</Button>
                 <Button
                   className="flex-1"
                   onClick={handleFinish}
-                  disabled={loading || categoriesList.filter((c) => c.selected).length === 0}
+                  disabled={loading || selectedCats.length === 0}
                 >
-                  {loading ? (
-                    <Loader2 size={16} className="animate-spin mr-2" />
-                  ) : null}
+                  {loading ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
                   {t("done")} 🚀
                 </Button>
               </div>
             </CardContent>
           </Card>
         )}
+      </div>
     </div>
-    </div >
   );
 }

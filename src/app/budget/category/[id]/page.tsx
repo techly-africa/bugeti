@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronDown, ChevronRight, PlusCircle, PhoneCall } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronRight, PlusCircle, PhoneCall, Pencil } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/layout/AppShell";
@@ -125,7 +125,7 @@ export default function CategoryDetailPage({
   const subCategories = categories.filter((c) => c.parent_id === id);
 
   const catTxs = transactions
-    .filter((tx) => tx.category_id === id && tx.type === "expense")
+    .filter((tx) => tx.category_id === id && (tx.type === "expense" || tx.type === "transfer"))
     .sort((a, b) => b.date.localeCompare(a.date));
 
   if (!category) {
@@ -151,10 +151,16 @@ export default function CategoryDetailPage({
     }, 0);
   }
 
-  const directSpend = catTxs.reduce((sum, t) => sum + t.amount, 0);
+  // Transfers are not expenses — they reduce available balance but don't count as spending
+  const directExpenses = transactions
+    .filter((tx) => tx.category_id === id && tx.type === "expense")
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const directTransfers = transactions
+    .filter((tx) => tx.category_id === id && tx.type === "transfer")
+    .reduce((sum, tx) => sum + tx.amount, 0);
   const subSpend = getDescendantSpend(id);
-  const spent = directSpend + subSpend;
-  const remaining = category.planned_amount - spent;
+  const spent = directExpenses + subSpend;
+  const remaining = category.planned_amount - spent - directTransfers;
   const percentage =
     category.planned_amount > 0
       ? Math.min(Math.round((spent / category.planned_amount) * 100), 999)
@@ -208,6 +214,11 @@ export default function CategoryDetailPage({
           </Button>
           <span className="text-2xl">{category.icon}</span>
           <h1 className="font-bold text-xl flex-1">{name}</h1>
+          <Button variant="ghost" size="icon" asChild>
+            <Link href={`/budget/category/${id}/edit`}>
+              <Pencil size={16} />
+            </Link>
+          </Button>
           {(category.name === "Pocket Money" || category.name_rw === "Amafaranga yo mu nkono") &&
             activeBudget && (
               <PocketMoneySplitSheet

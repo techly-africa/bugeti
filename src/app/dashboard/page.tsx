@@ -187,12 +187,12 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Revenue / Expenses / Savings summary */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* Budget Envelope Summary */}
+        <div className="grid grid-cols-2 gap-3">
           <div className="bg-card rounded-2xl border p-3 text-center">
             <div className="flex items-center justify-center gap-1 mb-1">
               <TrendingUp className="h-3.5 w-3.5 text-green-600" />
-              <p className="text-xs text-muted-foreground">{t("revenue")}</p>
+              <p className="text-xs text-muted-foreground">{t("income")}</p>
             </div>
             <p className="font-bold text-sm text-green-600">
               {formatRWF(stats.total_revenue)}
@@ -200,8 +200,17 @@ export default function DashboardPage() {
           </div>
           <div className="bg-card rounded-2xl border p-3 text-center">
             <div className="flex items-center justify-center gap-1 mb-1">
+              <Wallet className="h-3.5 w-3.5 text-primary" />
+              <p className="text-xs text-muted-foreground">{t("totalBudget")}</p>
+            </div>
+            <p className="font-bold text-sm text-primary">
+              {formatRWF(stats.total_planned)}
+            </p>
+          </div>
+          <div className="bg-card rounded-2xl border p-3 text-center">
+            <div className="flex items-center justify-center gap-1 mb-1">
               <TrendingDown className="h-3.5 w-3.5 text-red-500" />
-              <p className="text-xs text-muted-foreground">{t("totalExpenses")}</p>
+              <p className="text-xs text-muted-foreground">{t("spent")}</p>
             </div>
             <p className="font-bold text-sm text-red-500">
               {formatRWF(stats.total_spent)}
@@ -210,18 +219,20 @@ export default function DashboardPage() {
           <div
             className={cn(
               "rounded-2xl border p-3 text-center",
-              savingsPositive ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
+              stats.total_remaining >= 0 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
             )}
           >
             <div className="flex items-center justify-center gap-1 mb-1">
-              <Wallet className={cn("h-3.5 w-3.5", savingsPositive ? "text-green-700" : "text-red-600")} />
-              <p className="text-xs text-muted-foreground">{t("savings")}</p>
+              <Wallet className={cn("h-3.5 w-3.5", stats.total_remaining >= 0 ? "text-green-700" : "text-red-600")} />
+              <p className="text-xs text-muted-foreground">
+                {t("remaining")}
+              </p>
             </div>
-            <p className={cn("font-bold text-sm", savingsPositive ? "text-green-700" : "text-red-600")}>
-              {formatRWF(Math.abs(stats.savings))}
+            <p className={cn("font-bold text-sm", stats.total_remaining >= 0 ? "text-green-700" : "text-red-600")}>
+              {formatRWF(Math.abs(stats.total_remaining))}
             </p>
-            {!savingsPositive && (
-              <p className="text-xs text-red-500">over</p>
+            {stats.total_remaining < 0 && (
+              <p className="text-[10px] text-red-500 mt-0.5">over budget</p>
             )}
           </div>
         </div>
@@ -253,6 +264,13 @@ export default function DashboardPage() {
               {stats.categories.map((cat) => (
                 <CategoryCard key={cat.id} category={cat} />
               ))}
+              <Link
+                href="/budget/category/new"
+                className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors gap-2"
+              >
+                <PlusCircle size={24} />
+                <span className="text-sm font-medium">{t("addCategory")}</span>
+              </Link>
             </div>
           )}
         </section>
