@@ -12,6 +12,7 @@ import {
 import { OfflineBanner } from "@/components/shared/OfflineBanner";
 import { DemoBanner } from "@/components/shared/DemoBanner";
 import { LanguageToggle } from "@/components/shared/LanguageToggle";
+import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Logo } from "@/components/shared/Logo";
 import { useT } from "@/hooks/useT";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -40,7 +41,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/dashboard" className="flex items-center">
             <Logo variant="icon" height={36} />
           </Link>
-          <LanguageToggle />
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
+            <LanguageToggle />
+          </div>
         </div>
       </header>
 

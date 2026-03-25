@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/shared/Logo";
 import { useUser } from "@/store";
 import { syncDown } from "@/lib/sync";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 export default function VerifyPage() {
   const user = useUser();
@@ -81,6 +82,16 @@ export default function VerifyPage() {
 
     sessionStorage.removeItem("otp_token");
     toast.success("Email verified!");
+
+    // Establish a Supabase session from the magic-link token returned by the server.
+    // Without this, the client has no JWT and all authenticated Supabase calls get 401.
+    if (isSupabaseConfigured() && data.supabaseToken) {
+      const { error: sessionErr } = await supabase.auth.verifyOtp({
+        token_hash: data.supabaseToken.token_hash,
+        type: "magiclink",
+      });
+      if (sessionErr) console.warn("[verify] Supabase session creation failed:", sessionErr.message);
+    }
 
     // Check if user already has data on Supabase (e.g. returning user or invited)
     const hasData = await syncDown(data.user_id || user?.id || "anonymous");
