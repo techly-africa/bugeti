@@ -37,19 +37,19 @@ function extractAmount(text: string): number | undefined {
   // Patterns for RWF amounts in MoMo / bank receipts
   const patterns = [
     // MTN MoMo: "Amount: 5,000 RWF" or "RWF 5,000"
-    /(?:amount|amafaranga)[:\s]+([0-9,]+)\s*(?:rwf|frw)?/i,
-    /(?:rwf|frw)\s*([0-9,]+)/i,
-    /([0-9,]+)\s*(?:rwf|frw)/i,
+    /(?:amount|amafaranga)[:\s]+(\d[,\d]*)\s*(?:rwf|frw)?/i,
+    /(?:rwf|frw)\s*(\d[,\d]*)/i,
+    /(\d[,\d]*)\s*(?:rwf|frw)/i,
     // Equity / BK: "5000 RWF" plain
-    /\b([0-9]{3,}(?:,[0-9]{3})*)\b/,
+    /\b(\d{3,}(?:,\d{3})*)\b/,
   ];
 
   for (const pattern of patterns) {
-    const match = text.match(pattern);
+    const match = pattern.exec(text);
     if (match) {
-      const raw = match[1].replace(/,/g, "");
-      const value = parseInt(raw, 10);
-      if (!isNaN(value) && value > 0 && value < 100_000_000) {
+      const raw = match[1].replaceAll(",", "");
+      const value = Number.parseInt(raw, 10);
+      if (!Number.isNaN(value) && value > 0 && value < 100_000_000) {
         return value;
       }
     }
@@ -69,11 +69,11 @@ function extractDate(text: string): string | undefined {
   ];
 
   for (const pattern of patterns) {
-    const match = text.match(pattern);
+    const match = pattern.exec(text);
     if (match) {
       try {
         const d = new Date(match[1]);
-        if (!isNaN(d.getTime())) {
+        if (!Number.isNaN(d.getTime())) {
           return d.toISOString().split("T")[0];
         }
       } catch {
@@ -81,7 +81,7 @@ function extractDate(text: string): string | undefined {
       }
     }
   }
-  return new Date().toISOString().split("T")[0]; // default to today
+  return undefined; // let the user fill in the date rather than silently misdating
 }
 
 // ─── Merchant Extraction ──────────────────────────────────────────────────────
@@ -89,12 +89,12 @@ function extractDate(text: string): string | undefined {
 function extractMerchant(text: string): string | undefined {
   // Look for common Rwandan merchant patterns
   const patterns = [
-    /(?:merchant|to|from|recipient)[:\s]+([A-Za-z0-9\s&'-]+)/i,
-    /(?:momo pay|mobile money|mtn)[:\s]+([A-Za-z0-9\s&'-]+)/i,
+    /(?:merchant|to|from|recipient)[:\s]+([A-Za-z\d\s&'-]+)/i,
+    /(?:momo pay|mobile money|mtn)[:\s]+([A-Za-z\d\s&'-]+)/i,
   ];
 
   for (const pattern of patterns) {
-    const match = text.match(pattern);
+    const match = pattern.exec(text);
     if (match) {
       return match[1].trim().slice(0, 50);
     }

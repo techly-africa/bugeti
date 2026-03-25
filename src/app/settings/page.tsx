@@ -2,8 +2,9 @@
 
 export const dynamic = "force-dynamic";
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { LogOut, Globe, Copy, Home, UserPlus, Loader2 } from "lucide-react";
+import { LogOut, Globe, Copy, Home, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +15,7 @@ import { useT } from "@/hooks/useT";
 import { useAppStore, useHousehold, useLang, useUser } from "@/store";
 import { signOut, registerMemberAccount } from "@/lib/supabase";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { db } from "@/db";
+import { db, clearAllData } from "@/db";
 import { generateId } from "@/lib/constants";
 import type { HouseholdMember } from "@/lib/types";
 
@@ -23,7 +24,9 @@ export default function SettingsPage() {
   const user = useUser();
   const household = useHousehold();
   const lang = useLang();
-  const { setLang, setUser, setHousehold, setActiveBudget } = useAppStore();
+  const { setLang } = useAppStore();
+  const resetAppData = useAppStore((s) => s.resetAppData);
+  const router = useRouter();
 
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [showAddMember, setShowAddMember] = useState(false);
@@ -40,7 +43,7 @@ export default function SettingsPage() {
 
   useEffect(() => { loadMembers(); }, [loadMembers]);
 
-  const handleAddMember = async (e: React.FormEvent) => {
+  const handleAddMember = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!household) return;
     setAddingMember(true);
@@ -73,10 +76,9 @@ export default function SettingsPage() {
 
   const handleSignOut = async () => {
     await signOut();
-    setUser(null);
-    setHousehold(null);
-    setActiveBudget(null);
-    window.location.href = "/auth";
+    await clearAllData();
+    resetAppData();
+    router.push("/auth");
   };
 
   const copyInviteCode = () => {
@@ -187,17 +189,17 @@ export default function SettingsPage() {
               <Separator />
 
               {/* Add member */}
-              {!showAddMember ? (
+              {!showAddMember && (
                 <Button
                   variant="outline"
                   size="sm"
                   className="w-full"
                   onClick={() => setShowAddMember(true)}
                 >
-                  <UserPlus size={14} className="mr-1.5" />
                   Add Household Member
                 </Button>
-              ) : (
+              )}
+              {showAddMember && (
                 <form onSubmit={handleAddMember} className="space-y-3">
                   <p className="text-xs font-medium text-muted-foreground">New member account</p>
                   <div className="space-y-1">

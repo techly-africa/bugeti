@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { useActiveBudget, useCategories, useTransactions } from "@/store";
+import { useActiveBudget, useTransactions } from "@/store";
+import { useCategoryTree, getAllIds } from "./useCategoryTree";
 
 export interface BudgetAlert {
   type: "already_over" | "projected_over" | "burning_fast";
@@ -22,15 +23,17 @@ export interface BudgetAlert {
 
 export function useBudgetAlerts(): BudgetAlert[] {
   const activeBudget = useActiveBudget();
-  const categories = useCategories();
   const transactions = useTransactions();
+  const { rootCategories, descendantMap } = useCategoryTree();
 
   return useMemo(() => {
     if (!activeBudget) return [];
 
     const today = new Date();
-    const start = new Date(activeBudget.start_date);
-    const end = new Date(activeBudget.end_date);
+    // Parse ISO date strings as local noon to avoid UTC-midnight ±1 day drift
+    // in UTC+2 (Kigali) and other positive-offset timezones.
+    const start = new Date(activeBudget.start_date + "T12:00:00");
+    const end   = new Date(activeBudget.end_date   + "T12:00:00");
 
     // Clamp effective end to today so future days don't dilute the daily rate
     const effectiveEnd = new Date(Math.min(end.getTime(), today.getTime()));
@@ -45,13 +48,12 @@ export function useBudgetAlerts(): BudgetAlert[] {
     const daysLeft = Math.max(0, totalDays - daysElapsed);
     const periodFraction = daysElapsed / totalDays;
 
-    const rootCategories = categories.filter(
-      (c) => !c.parent_id && c.planned_amount > 0
-    );
     const alerts: BudgetAlert[] = [];
 
     for (const cat of rootCategories) {
-      const allIds = new Set([cat.id, ...getDescendantIds(cat.id, categories)]);
+      if (cat.planned_amount <= 0) continue;
+
+      const allIds = getAllIds(cat.id, descendantMap);
       // Only true expenses drive velocity — transfers (pocket money splits, etc.)
       // are intentional allocations, not runaway spending
       const spent = transactions
@@ -100,17 +102,8 @@ export function useBudgetAlerts(): BudgetAlert[] {
     }
 
     // Danger alerts first; cap at 3 to avoid alert fatigue
-    const sorted = alerts.toSorted((a, b) =>
-      a.severity === "danger" && b.severity !== "danger" ? -1 : 1
-    );
-    return sorted.slice(0, 3);
-  }, [activeBudget, categories, transactions]);
-}
-
-function getDescendantIds(
-  parentId: string,
-  all: { id: string; parent_id?: string | null }[]
-): string[] {
-  const children = all.filter((c) => c.parent_id === parentId);
-  return children.flatMap((c) => [c.id, ...getDescendantIds(c.id, all)]);
+    return alerts
+      .toSorted((a, b) => (a.severity === "danger" && b.severity !== "danger" ? -1 : 1))
+      .slice(0, 3);
+  }, [activeBudget, rootCategories, descendantMap, transactions]);
 }

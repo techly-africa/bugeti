@@ -51,10 +51,29 @@ export const db = new BugetiDB();
 
 /** Returns all transactions that haven't been pushed to Supabase yet */
 export async function getUnsynced(): Promise<Transaction[]> {
+  // Dexie serializes boolean index values as 0/1 — equals(0) matches false.
   return db.transactions.where("synced").equals(0).toArray();
 }
 
 /** Mark a transaction as synced */
 export async function markSynced(id: string) {
   await db.transactions.update(id, { synced: true });
+}
+
+/**
+ * Wipes all user data from IndexedDB.
+ * Call this on logout so the next user on the same device
+ * cannot see the previous user's budgets and transactions.
+ */
+export async function clearAllData() {
+  await Promise.all([
+    db.profiles.clear(),
+    db.households.clear(),
+    db.members.clear(),
+    db.budgets.clear(),
+    db.categories.clear(),
+    db.transactions.clear(),
+    db.trips.clear(),
+    db.itinerary_items.clear(),
+  ]);
 }

@@ -38,7 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <OfflineBanner />
         <div className="flex h-14 items-center justify-between px-4">
           <Link href="/dashboard" className="flex items-center">
-            <Logo variant="full" color="dark" height={32} />
+            <Logo variant="icon" height={36} />
           </Link>
           <LanguageToggle />
         </div>

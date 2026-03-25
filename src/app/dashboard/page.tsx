@@ -15,7 +15,6 @@ import { useBudgetStats } from "@/hooks/useBudgetStats";
 import { useBudgetAlerts } from "@/hooks/useBudgetAlerts";
 import {
   useActiveBudget,
-  useActiveAccountType,
   useCategories,
   useTransactions,
   useUser,
@@ -23,16 +22,16 @@ import {
 } from "@/store";
 import { db } from "@/db";
 import { formatRWF } from "@/lib/constants";
+import { syncDown } from "@/lib/sync";
 import { cn } from "@/lib/utils";
 
 // School term months: Jan (0), May (4), Sep (8)
-const SCHOOL_TERM_MONTHS = [0, 4, 8];
+const SCHOOL_TERM_MONTHS = new Set([0, 4, 8]);
 
 export default function DashboardPage() {
   const t = useT();
   const user = useUser();
   const activeBudget = useActiveBudget();
-  const activeAccountType = useActiveAccountType();
   const categories = useCategories();
   const transactions = useTransactions();
   const { setCategories, setTransactions, setActiveBudget, setHousehold } =
@@ -42,23 +41,44 @@ export default function DashboardPage() {
   const alerts = useBudgetAlerts();
 
   const currentMonth = new Date().getMonth();
-  const isSchoolTerm = SCHOOL_TERM_MONTHS.includes(currentMonth);
+  const isSchoolTerm = SCHOOL_TERM_MONTHS.has(currentMonth);
 
   // Load from IndexedDB on mount
   useEffect(() => {
     if (!user) {
-      window.location.href = "/auth";
+      globalThis.location.href = "/auth";
       return;
     }
 
-    async function load() {
+    async function load(u: NonNullable<typeof user>) {
       const budgets = await db.budgets.toArray();
       if (budgets.length === 0) {
-        window.location.href = "/onboarding";
+        // Try to sync from Supabase before giving up
+        const synced = await syncDown(u.id);
+        if (!synced) {
+          globalThis.location.href = "/onboarding";
+          return;
+        }
+        // If synced, re-fetch budgets
+        const restoredBudgets = await db.budgets.toArray();
+        if (restoredBudgets.length === 0) {
+          globalThis.location.href = "/onboarding";
+          return;
+        }
+        // Continue with restored data
+        await proceedWithLoading(restoredBudgets);
         return;
       }
 
-      const budget = budgets[budgets.length - 1];
+      await proceedWithLoading(budgets);
+    }
+
+    async function proceedWithLoading(budgets: any[]) {
+      // Pick the most-recent active monthly budget; fall back to any budget
+      const monthly = budgets
+        .filter((b) => b.budget_type === "monthly" && b.status === "active")
+        .sort((a, b) => b.start_date.localeCompare(a.start_date));
+      const budget = monthly[0] ?? budgets.at(-1)!
       setActiveBudget(budget);
 
       const households = await db.households.toArray();
@@ -73,12 +93,12 @@ export default function DashboardPage() {
       const txs = await db.transactions
         .where("budget_id")
         .equals(budget.id)
-        .reverse()
-        .sortBy("date");
+        .sortBy("date")
+        .then((arr) => arr.toReversed());
       setTransactions(txs);
     }
 
-    load();
+    load(user);
   }, [user, setActiveBudget, setCategories, setTransactions, setHousehold]);
 
   const recentTxs = transactions.slice(0, 5);

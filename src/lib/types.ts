@@ -59,6 +59,8 @@ export interface Budget {
   end_date: string;     // ISO date
   total_envelope?: number; // for custom budget types
   currency: Currency;
+  revenue_source?: string;
+  revenue_duration?: string;
   created_by: string;
   created_at: string;
 }
@@ -91,7 +93,7 @@ export interface Transaction {
   note: string;
   date: string;            // ISO date
   payment_method: PaymentMethod;
-  receipt_url?: string;
+  receipt_url?: string;  // Supabase storage path — use getReceiptSignedUrl() to display
   ocr_raw?: string;
   synced: boolean;
   created_at: string;

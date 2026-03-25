@@ -23,7 +23,7 @@ import {
 } from "@/store";
 import { db } from "@/db";
 import { generateId } from "@/lib/constants";
-import { OcrResult, Transaction, TransactionType } from "@/lib/types";
+import { OcrResult, PaymentMethod, Transaction, TransactionType } from "@/lib/types";
 import { suggestCategory, learnMapping } from "@/lib/categorizer";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -45,6 +45,7 @@ export default function NewTransactionPage() {
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [receipt, setReceipt] = useState<File | null>(null);
   const [ocrRaw, setOcrRaw] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [loading, setLoading] = useState(false);
   const [suggestedCatId, setSuggestedCatId] = useState<string | null>(null);
 
@@ -69,7 +70,7 @@ export default function NewTransactionPage() {
     [t]
   );
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!user || !activeBudget) return;
     if (amount <= 0) {
@@ -91,15 +92,25 @@ export default function NewTransactionPage() {
 
       // Upload receipt to Supabase storage if present and online
       if (receipt && navigator.onLine) {
-        const path = `receipts/${user.id}/${generateId()}-${receipt.name}`;
+        if (!receipt.type.startsWith("image/")) {
+          toast.error("Receipt must be an image file (JPEG, PNG, etc.)");
+          setLoading(false);
+          return;
+        }
+        if (receipt.size > 5 * 1024 * 1024) {
+          toast.error("Receipt image must be smaller than 5 MB");
+          setLoading(false);
+          return;
+        }
+        // Use only a generated ID as the filename — never trust the original name
+        const ext = receipt.type.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
+        const path = `receipts/${user.id}/${generateId()}.${ext}`;
         const { data: uploadData } = await supabase.storage
           .from("bugeti-receipts")
-          .upload(path, receipt);
+          .upload(path, receipt, { contentType: receipt.type });
         if (uploadData) {
-          const { data: urlData } = supabase.storage
-            .from("bugeti-receipts")
-            .getPublicUrl(uploadData.path);
-          receipt_url = urlData.publicUrl;
+          // Store the storage path; generate signed URLs on-demand when displaying
+          receipt_url = uploadData.path;
         }
       }
 
@@ -115,7 +126,7 @@ export default function NewTransactionPage() {
         date,
         receipt_url,
         ocr_raw: ocrRaw || undefined,
-        payment_method: "cash" as const,
+        payment_method: paymentMethod,
         synced: navigator.onLine,
         created_at: new Date().toISOString(),
       };
@@ -235,6 +246,36 @@ export default function NewTransactionPage() {
               onChange={(e) => setNote(e.target.value)}
               rows={2}
             />
+          </div>
+
+          {/* Payment method */}
+          <div className="space-y-1.5">
+            <Label>{t("paymentMethod")}</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { key: "mtn_momo",      label: "MTN MoMo",      icon: "📲" },
+                  { key: "airtel_money",  label: "Airtel Money",  icon: "📱" },
+                  { key: "bank_transfer", label: "Bank Transfer", icon: "🏦" },
+                  { key: "cash",          label: "Cash",          icon: "💵" },
+                ] as { key: PaymentMethod; label: string; icon: string }[]
+              ).map((pm) => (
+                <button
+                  key={pm.key}
+                  type="button"
+                  onClick={() => setPaymentMethod(pm.key)}
+                  className={cn(
+                    "flex items-center gap-2 p-2.5 rounded-xl border-2 text-xs font-medium transition-all",
+                    paymentMethod === pm.key
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-muted hover:border-muted-foreground"
+                  )}
+                >
+                  <span>{pm.icon}</span>
+                  {pm.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Receipt upload */}

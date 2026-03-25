@@ -287,6 +287,7 @@ function IkiminaCard({
 function NewIkiminaSheet({ onSave }: { onSave: (ik: Ikimina) => void }) {
   const t = useT();
   const user = useUser();
+  const household = useAppStore((s) => s.household);
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -299,7 +300,7 @@ function NewIkiminaSheet({ onSave }: { onSave: (ik: Ikimina) => void }) {
     if (!name || amount === 0) return;
     onSave({
       id: generateId(),
-      household_id: "",
+      household_id: household?.id ?? "",
       name,
       total_members: parseInt(members, 10) || 1,
       contribution_amount: amount,

@@ -2,6 +2,7 @@
 
 export const dynamic = "force-dynamic";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { useT } from "@/hooks/useT";
 export default function AuthPage() {
   const t = useT();
   const setUser = useAppStore((s) => s.setUser);
+  const router = useRouter();
 
   const [loading, setLoading] = useState(false);
 
@@ -57,7 +59,7 @@ export default function AuthPage() {
         preferred_language: "en",
         created_at: data.user.created_at,
       });
-      window.location.href = "/dashboard";
+      router.push("/dashboard");
     }
   };
 
@@ -65,9 +67,9 @@ export default function AuthPage() {
     e.preventDefault();
     setLoading(true);
     const { data, error } = await signUp(suEmail, suPassword, suName);
-    setLoading(false);
 
     if (error) {
+      setLoading(false);
       toast.error(error.message);
       return;
     }
@@ -80,8 +82,25 @@ export default function AuthPage() {
         preferred_language: "en",
         created_at: data.user.created_at,
       });
-      toast.success("Account created! Let's set up your budget.");
-      window.location.href = "/onboarding";
+
+      // Send OTP and move to verification step
+      const res = await fetch("/api/email/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: suEmail }),
+      });
+      setLoading(false);
+
+      if (!res.ok) {
+        toast.error("Account created but couldn't send verification email. Please try again.");
+        return;
+      }
+
+      const { token } = await res.json();
+      sessionStorage.setItem("otp_token", token);
+      sessionStorage.setItem("otp_email", suEmail);
+      toast.success("Check your email for a verification code.");
+      router.push("/verify");
     }
   };
 
@@ -92,14 +111,8 @@ export default function AuthPage() {
       </div>
 
       {/* Splash header */}
-      <div className="flex flex-col items-center gap-4 mb-8 mt-12">
-        {/* Icon mark — large on splash */}
-        <Logo variant="icon" color="dark" height={80} />
-        {/* Wordmark below */}
-        <Logo variant="wordmark" color="dark" height={36} />
-        <p className="text-muted-foreground text-sm text-center max-w-xs">
-          {t("tagline")}
-        </p>
+      <div className="flex flex-col items-center gap-4 mb-3 mt-12">
+        <Logo variant="icon" height={160} />
         <LanguageToggle />
       </div>
 

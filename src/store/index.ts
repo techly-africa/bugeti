@@ -59,6 +59,7 @@ interface AppState {
   ikiminaContributions: IkiminaContribution[];
   setIkiminaContributions: (cs: IkiminaContribution[]) => void;
   addIkiminaContribution: (c: IkiminaContribution) => void;
+  removeIkiminaContribution: (id: string) => void;
 
   // ── Trips ──
   trips: Trip[];
@@ -77,6 +78,10 @@ interface AppState {
   // ── UI state ──
   isSidebarOpen: boolean;
   setSidebarOpen: (v: boolean) => void;
+
+  // ── Logout ──
+  /** Resets all in-memory state. Pair with clearAllData() from db/index.ts. */
+  resetAppData: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -148,6 +153,8 @@ export const useAppStore = create<AppState>()(
       setIkiminaContributions: (ikiminaContributions) => set({ ikiminaContributions }),
       addIkiminaContribution: (c) =>
         set((s) => ({ ikiminaContributions: [c, ...s.ikiminaContributions] })),
+      removeIkiminaContribution: (id) =>
+        set((s) => ({ ikiminaContributions: s.ikiminaContributions.filter((c) => c.id !== id) })),
 
       // Trips
       trips: [],
@@ -172,6 +179,21 @@ export const useAppStore = create<AppState>()(
       // UI
       isSidebarOpen: false,
       setSidebarOpen: (isSidebarOpen) => set({ isSidebarOpen }),
+
+      // Logout reset — clears all runtime data; lang preference is preserved
+      resetAppData: () =>
+        set({
+          user: null,
+          household: null,
+          activeBudget: null,
+          activeAccountType: "common",
+          customBudgets: [],
+          categories: [],
+          transactions: [],
+          ikiminas: [],
+          ikiminaContributions: [],
+          trips: [],
+        }),
     }),
     {
       name: "umutungo-store",

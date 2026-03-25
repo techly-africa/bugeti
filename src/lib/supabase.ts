@@ -51,7 +51,7 @@ function demoSignUp(email: string, displayName: string): AuthResult {
   return {
     data: {
       user: {
-        id: generateId(),
+        id: demoIdFromEmail(email),
         email,
         user_metadata: { display_name: displayName },
         created_at: new Date().toISOString(),
@@ -61,12 +61,21 @@ function demoSignUp(email: string, displayName: string): AuthResult {
   };
 }
 
+/**
+ * Derives a stable, deterministic ID from the email so the same demo user
+ * always gets the same ID across sign-ins and their IndexedDB data persists.
+ */
+function demoIdFromEmail(email: string): string {
+  // btoa gives a stable base64 string; strip non-alphanumeric chars and cap length
+  return btoa(email.toLowerCase()).replaceAll(/[^a-z0-9]/gi, "").slice(0, 21);
+}
+
 /** Demo sign-in: accepts any credentials (no network needed) */
 function demoSignIn(email: string): AuthResult {
   return {
     data: {
       user: {
-        id: generateId(),
+        id: demoIdFromEmail(email),
         email,
         user_metadata: { display_name: email.split("@")[0] },
         created_at: new Date().toISOString(),
@@ -102,6 +111,22 @@ export async function signIn(
     password,
   });
   return { data: { user: data.user as AuthResult["data"]["user"] }, error };
+}
+
+/**
+ * Generates a short-lived signed URL for a receipt stored in Supabase storage.
+ * @param storagePath  The path returned by upload() — e.g. "receipts/uid/abc.jpg"
+ * @param expiresIn    Seconds until the URL expires (default 1 hour)
+ */
+export async function getReceiptSignedUrl(
+  storagePath: string,
+  expiresIn = 3600
+): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null;
+  const { data } = await getSupabase()
+    .storage.from("bugeti-receipts")
+    .createSignedUrl(storagePath, expiresIn);
+  return data?.signedUrl ?? null;
 }
 
 export async function signOut() {
