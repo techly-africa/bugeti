@@ -23,7 +23,7 @@ import { useAppStore, useUser } from "@/store";
 import { db } from "@/db";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useT } from "@/hooks/useT";
-import { Category } from "@/lib/types";
+import { Category, Transaction } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Step = "household" | "income" | "categories";
@@ -177,6 +177,26 @@ export default function OnboardingPage() {
       })) as Category[];
       await db.categories.bulkAdd(finalCats);
 
+      // Create initial income transaction
+      let incomeTx: Transaction | null = null;
+      if (monthlyIncome > 0 && finalCats.length > 0) {
+        incomeTx = {
+          id: generateId(),
+          category_id: finalCats[0].id,
+          budget_id: budgetId,
+          household_id: householdId,
+          added_by: u.id,
+          type: "income",
+          amount: monthlyIncome,
+          note: `Initial Income (${revenueSource || "General"})`,
+          date: new Date().toISOString().split("T")[0],
+          payment_method: "cash",
+          synced: navigator.onLine && isSupabaseConfigured(),
+          created_at: new Date().toISOString(),
+        };
+        await db.transactions.add(incomeTx);
+      }
+
       // Cloud sync
       if (typeof navigator !== "undefined" && navigator.onLine && isSupabaseConfigured()) {
         try {
@@ -190,6 +210,7 @@ export default function OnboardingPage() {
           });
           await supabase.from("budgets").insert(budget);
           if (finalCats.length > 0) await supabase.from("categories").insert(finalCats);
+          if (incomeTx) await supabase.from("transactions").insert(incomeTx);
         } catch (syncErr) {
           console.error("Cloud sync failed during onboarding:", syncErr);
         }
