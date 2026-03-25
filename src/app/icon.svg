@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+  <!-- Rounded square backdrop -->
+  <rect width="256" height="256" rx="64" fill="url(#bg)" />
+  
+  <!-- Stylized B / Wallet -->
+  <path
+    d="M84 72h52c24.3 0 44 17.9 44 40 0 16.7-10.2 31.1-24.8 37C174.5 153.7 186 169.1 186 188c0 24.3-19.7 44-44 44H84"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="28"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M84 152h64"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="28"
+    stroke-linecap="round"
+  />
+  <path
+    d="M84 72v160"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="28"
+    stroke-linecap="round"
+  />
+</svg>
