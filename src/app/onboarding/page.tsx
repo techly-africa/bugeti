@@ -44,6 +44,15 @@ export default function OnboardingPage() {
     user ? `${user.display_name}'s Budget` : "My Budget"
   );
 
+  // ── Step 1b: Invite emails (family type) ────────────────────────────────────
+  const [inviteEmails, setInviteEmails] = useState<string[]>([""]);
+
+  const addInviteRow = () => setInviteEmails((prev) => [...prev, ""]);
+  const updateInviteEmail = (i: number, val: string) =>
+    setInviteEmails((prev) => prev.map((e, idx) => (idx === i ? val : e)));
+  const removeInviteRow = (i: number) =>
+    setInviteEmails((prev) => prev.filter((_, idx) => idx !== i));
+
   // ── Step 2: Income ──────────────────────────────────────────────────────────
   const now = new Date();
   const monthName = now.toLocaleString("en", { month: "long" });
@@ -220,6 +229,38 @@ export default function OnboardingPage() {
       setActiveBudget(budget);
       setCategories(finalCats);
 
+      // Send invitations to family members (fire-and-forget; don't block navigation)
+      const emailsToInvite = inviteEmails.filter((e) => e.trim());
+      if (emailsToInvite.length > 0 && isSupabaseConfigured()) {
+        const { createClient } = await import("@supabase/supabase-js");
+        const session = (await createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { auth: { persistSession: false, autoRefreshToken: false } }
+        ).auth.getSession()).data.session;
+
+        Promise.allSettled(
+          emailsToInvite.map((email) =>
+            fetch("/api/invite", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+              },
+              body: JSON.stringify({
+                email,
+                householdId: householdId,
+                householdName: household.name,
+                invitedBy: u.display_name,
+              }),
+            })
+          )
+        ).then((results) => {
+          const sent = results.filter((r) => r.status === "fulfilled").length;
+          if (sent > 0) toast.success(`Invitation${sent > 1 ? "s" : ""} sent to ${sent} member${sent > 1 ? "s" : ""}.`);
+        });
+      }
+
       toast.success("Budget created! Let's go 🚀");
       window.location.href = "/dashboard";
     } catch (err) {
@@ -285,6 +326,32 @@ export default function OnboardingPage() {
                   placeholder="e.g. Uwase Family Budget"
                 />
               </div>
+
+              {householdType === "family" && (
+                <div className="space-y-2">
+                  <Label className="text-sm">Invite family members <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <p className="text-xs text-muted-foreground">They'll receive an email to set their password and join your budget.</p>
+                  {inviteEmails.map((email, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input
+                        type="email"
+                        placeholder="family@example.com"
+                        value={email}
+                        onChange={(e) => updateInviteEmail(i, e.target.value)}
+                        className="flex-1"
+                      />
+                      {inviteEmails.length > 1 && (
+                        <Button type="button" variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground" onClick={() => removeInviteRow(i)}>
+                          <X size={14} />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" size="sm" className="w-full border-dashed text-muted-foreground" onClick={addInviteRow}>
+                    <Plus size={13} className="mr-1" /> Add another
+                  </Button>
+                </div>
+              )}
 
               <Button className="w-full" onClick={() => setStep("income")}>
                 {t("next")} <ChevronRight size={16} />

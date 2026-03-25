@@ -34,7 +34,7 @@ export function useBudgetStats(): BudgetSummary {
 
     const total_planned   = rootCategories.reduce((sum, c) => sum + c.planned_amount, 0);
     const total_spent     = categoriesWithStats.reduce((sum, c) => sum + c.spent, 0);
-    const total_remaining = total_planned - total_spent;
+    const total_remaining = total_revenue - total_planned;
     const savings         = total_revenue - total_spent;
     const percentage_used =
       total_planned > 0

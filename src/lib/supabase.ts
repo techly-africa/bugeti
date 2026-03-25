@@ -129,6 +129,32 @@ export async function getReceiptSignedUrl(
   return data?.signedUrl ?? null;
 }
 
+/**
+ * Sends a password-reset email via Supabase.
+ * In demo mode resolves immediately so the UI can show a success state.
+ */
+export async function resetPassword(
+  email: string,
+  redirectTo: string
+): Promise<{ error: { message: string } | null }> {
+  if (!isSupabaseConfigured()) return { error: null };
+  const { error } = await getSupabase().auth.resetPasswordForEmail(email, { redirectTo });
+  return { error };
+}
+
+/**
+ * Sets a new password for the currently authenticated user.
+ * Must be called after the user has landed on the reset-password page and
+ * Supabase has processed the recovery token from the URL hash.
+ */
+export async function updatePassword(
+  newPassword: string
+): Promise<{ error: { message: string } | null }> {
+  if (!isSupabaseConfigured()) return { error: null };
+  const { error } = await getSupabase().auth.updateUser({ password: newPassword });
+  return { error };
+}
+
 export async function signOut() {
   if (!isSupabaseConfigured()) return { error: null };
   const { error } = await getSupabase().auth.signOut();

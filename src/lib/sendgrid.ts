@@ -103,6 +103,63 @@ export async function sendOtpEmail(to: string, otp: string) {
   });
 }
 
+// ─── Invitation email ──────────────────────────────────────────────────────
+
+export async function sendInviteEmail(
+  to: string,
+  invitedBy: string,
+  householdName: string,
+  inviteUrl: string
+) {
+  init();
+  await sgMail.send({
+    to,
+    from: { email: FROM_EMAIL, name: FROM_NAME },
+    subject: `${invitedBy} invited you to join ${householdName} on Bugeti`,
+    html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0fdf4;font-family:system-ui,-apple-system,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;padding:40px 20px">
+    <tr><td align="center">
+      <table width="100%" style="max-width:480px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06)">
+        <tr>
+          <td style="background:#16a34a;padding:32px;text-align:center">
+            <p style="margin:0;font-size:48px">🤝</p>
+            <h1 style="margin:12px 0 0;color:#fff;font-size:24px;font-weight:700">You're invited to Bugeti</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px">
+            <p style="margin:0 0 16px;color:#555;line-height:1.6">
+              <strong>${invitedBy}</strong> has invited you to join the <strong>${householdName}</strong> budget on Bugeti — the smart budgeting app for Rwandan families.
+            </p>
+            <p style="margin:0 0 24px;color:#555;line-height:1.6">
+              Click the button below to create your account and set your password.
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center">
+                  <a href="${inviteUrl}" style="display:inline-block;background:#16a34a;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:10px">
+                    Accept invitation →
+                  </a>
+                </td>
+              </tr>
+            </table>
+            <p style="margin:24px 0 0;color:#888;font-size:12px;text-align:center">
+              This link expires in 24 hours. If you didn't expect this invitation, you can ignore this email.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  });
+}
+
 // ─── Notification email ────────────────────────────────────────────────────
 
 export async function sendNotificationEmail(

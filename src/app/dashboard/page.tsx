@@ -231,6 +231,18 @@ export default function DashboardPage() {
             <p className={cn("font-bold text-sm", stats.total_remaining >= 0 ? "text-green-700" : "text-red-600")}>
               {formatRWF(Math.abs(stats.total_remaining))}
             </p>
+            {stats.total_remaining > 0 && (
+              <div className="mt-1.5 pt-1.5 border-t border-green-200/60 flex flex-col gap-0.5">
+                <div className="flex justify-between items-center text-[10px] text-green-700">
+                  <span className="opacity-80">80% Savings</span>
+                  <span className="font-semibold tabular-nums">{formatRWF(stats.total_remaining * 0.8)}</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] text-emerald-800">
+                  <span className="opacity-80">20% Emergency</span>
+                  <span className="font-semibold tabular-nums">{formatRWF(stats.total_remaining * 0.2)}</span>
+                </div>
+              </div>
+            )}
             {stats.total_remaining < 0 && (
               <p className="text-[10px] text-red-500 mt-0.5">over budget</p>
             )}

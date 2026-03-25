@@ -3,6 +3,7 @@
 export const dynamic = "force-dynamic";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -146,7 +147,15 @@ export default function AuthPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>{t("password")}</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>{t("password")}</Label>
+                    <Link
+                      href="/forgot-password"
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      Forgot password?
+                    </Link>
+                  </div>
                   <Input
                     type="password"
                     placeholder="••••••••"

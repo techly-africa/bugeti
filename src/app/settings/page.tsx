@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { AppShell } from "@/components/layout/AppShell";
 import { useT } from "@/hooks/useT";
 import { useAppStore, useHousehold, useLang, useUser } from "@/store";
-import { signOut, registerMemberAccount, supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { signOut, supabase, isSupabaseConfigured, getSupabase } from "@/lib/supabase";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { db, clearAllData } from "@/db";
 import { generateId } from "@/lib/constants";
@@ -32,7 +32,6 @@ export default function SettingsPage() {
   const [showAddMember, setShowAddMember] = useState(false);
   const [memberName, setMemberName] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
-  const [memberPassword, setMemberPassword] = useState("");
   const [addingMember, setAddingMember] = useState(false);
 
   const loadMembers = useCallback(async () => {
@@ -45,70 +44,96 @@ export default function SettingsPage() {
 
   const handleAddMember = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!household) return;
+    if (!household || !user) return;
     setAddingMember(true);
 
-    const { userId, error } = await registerMemberAccount(memberEmail, memberPassword, memberName);
+    try {
+      // Get the caller's JWT so the server-side invite route can verify identity
+      const session = isSupabaseConfigured()
+        ? (await getSupabase().auth.getSession()).data.session
+        : null;
 
-    if (error || !userId) {
-      toast.error(error ?? "Failed to create member account.");
-      setAddingMember(false);
-      return;
-    }
+      const res = await fetch("/api/invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          email: memberEmail,
+          displayName: memberName,
+          householdId: household.id,
+          householdName: household.name,
+          invitedBy: user.display_name,
+        }),
+      });
 
-    const memberId = generateId();
-    await db.members.add({
-      id: memberId,
-      household_id: household.id,
-      user_id: userId,
-      role: "member",
-      display_name: memberName,
-      joined_at: new Date().toISOString(),
-    });
-
-    // Auto-create a private budget for the new member
-    const now = new Date();
-    const privateBudget = {
-      id: generateId(),
-      household_id: household.id,
-      name: `${memberName}'s Budget`,
-      period: "monthly" as const,
-      budget_type: "monthly" as const,
-      account_type: "private" as const,
-      status: "active" as const,
-      start_date: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0],
-      end_date: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0],
-      currency: "RWF" as const,
-      created_by: userId,
-      created_at: now.toISOString(),
-    };
-    await db.budgets.add(privateBudget);
-
-    if (navigator.onLine && isSupabaseConfigured()) {
-      try {
-        await Promise.all([
-          supabase.from("household_members").upsert({
-            id: memberId,
-            household_id: household.id,
-            user_id: userId,
-            role: "member",
-            display_name: memberName,
-            joined_at: new Date().toISOString(),
-          }),
-          supabase.from("budgets").upsert(privateBudget),
-        ]);
-      } catch (syncErr) {
-        console.warn("[Settings] Cloud sync failed:", syncErr);
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error ?? "Failed to send invitation.");
+        return;
       }
-    }
 
-    toast.success(`${memberName} has been added to ${household.name}.`);
-    setMemberName("");
-    setMemberEmail("");
-    setMemberPassword("");
-    setShowAddMember(false);
-    setAddingMember(false);
-    loadMembers();
+      const userId: string = json.userId;
+      const memberId = generateId();
+
+      // Persist locally so the owner sees the member immediately
+      await db.members.add({
+        id: memberId,
+        household_id: household.id,
+        user_id: userId,
+        role: "member",
+        display_name: memberName || memberEmail,
+        joined_at: new Date().toISOString(),
+      });
+
+      // Pre-create a private budget envelope for the invitee
+      const now = new Date();
+      const privateBudget = {
+        id: generateId(),
+        household_id: household.id,
+        name: `${memberName || memberEmail}'s Budget`,
+        period: "monthly" as const,
+        budget_type: "monthly" as const,
+        account_type: "private" as const,
+        status: "active" as const,
+        start_date: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0],
+        end_date: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0],
+        currency: "RWF" as const,
+        created_by: userId,
+        created_at: now.toISOString(),
+      };
+      await db.budgets.add(privateBudget);
+
+      if (navigator.onLine && isSupabaseConfigured()) {
+        try {
+          await Promise.all([
+            supabase.from("household_members").upsert({
+              id: memberId,
+              household_id: household.id,
+              user_id: userId,
+              role: "member",
+              display_name: memberName || memberEmail,
+              joined_at: new Date().toISOString(),
+            }),
+            supabase.from("budgets").upsert(privateBudget),
+          ]);
+        } catch (syncErr) {
+          console.warn("[Settings] Cloud sync failed:", syncErr);
+        }
+      }
+
+      toast.success(`Invitation sent to ${memberEmail}.`);
+      setMemberName("");
+      setMemberEmail("");
+      setShowAddMember(false);
+      loadMembers();
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to send invitation.");
+    } finally {
+      setAddingMember(false);
+    }
   };
 
   const handleSignOut = async () => {
@@ -238,14 +263,15 @@ export default function SettingsPage() {
               )}
               {showAddMember && (
                 <form onSubmit={handleAddMember} className="space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground">New member account</p>
+                  <p className="text-xs text-muted-foreground">
+                    They'll receive an email with a link to set their password.
+                  </p>
                   <div className="space-y-1">
                     <Label className="text-xs">Full name</Label>
                     <Input
                       placeholder="Agathe Uwase"
                       value={memberName}
                       onChange={(e) => setMemberName(e.target.value)}
-                      required
                     />
                   </div>
                   <div className="space-y-1">
@@ -255,17 +281,6 @@ export default function SettingsPage() {
                       placeholder="member@example.com"
                       value={memberEmail}
                       onChange={(e) => setMemberEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Password</Label>
-                    <Input
-                      type="password"
-                      placeholder="Min. 8 characters"
-                      value={memberPassword}
-                      onChange={(e) => setMemberPassword(e.target.value)}
-                      minLength={8}
                       required
                     />
                   </div>
@@ -282,7 +297,7 @@ export default function SettingsPage() {
                     </Button>
                     <Button type="submit" size="sm" className="flex-1" disabled={addingMember}>
                       {addingMember && <Loader2 size={13} className="animate-spin mr-1.5" />}
-                      Add Member
+                      Send invitation
                     </Button>
                   </div>
                 </form>
