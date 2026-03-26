@@ -34,8 +34,6 @@ export default function DashboardPage() {
   const activeBudget = useActiveBudget();
   const categories = useCategories();
   const transactions = useTransactions();
-  const { setCategories, setTransactions, setActiveBudget, setHousehold } =
-    useAppStore();
 
   const stats = useBudgetStats();
   const alerts = useBudgetAlerts();
@@ -43,36 +41,38 @@ export default function DashboardPage() {
   const currentMonth = new Date().getMonth();
   const isSchoolTerm = SCHOOL_TERM_MONTHS.has(currentMonth);
 
+  const [loading, setLoading] = useState(true);
   const [hasNoData, setHasNoData] = useState(false);
 
   // Load from IndexedDB on mount
   useEffect(() => {
     if (!user) {
       globalThis.location.href = "/auth";
+      setLoading(false);
       return;
     }
 
     async function load(u: NonNullable<typeof user>) {
-      const budgets = await db.budgets.toArray();
-      if (budgets.length === 0) {
-        // Try to sync from Supabase before giving up
-        const synced = await syncDown(u.id);
-        if (!synced) {
-          setHasNoData(true);
+      try {
+        const budgets = await db.budgets.toArray();
+        if (budgets.length === 0) {
+          // Try to sync from Supabase before giving up
+          const synced = await syncDown(u.id);
+          const restoredBudgets = synced ? await db.budgets.toArray() : [];
+          if (restoredBudgets.length === 0) {
+            setHasNoData(true);
+            return;
+          }
+          await proceedWithLoading(restoredBudgets);
           return;
         }
-        // If synced, re-fetch budgets
-        const restoredBudgets = await db.budgets.toArray();
-        if (restoredBudgets.length === 0) {
-          setHasNoData(true);
-          return;
-        }
-        // Continue with restored data
-        await proceedWithLoading(restoredBudgets);
-        return;
+        await proceedWithLoading(budgets);
+      } catch (err) {
+        console.error("[dashboard] load failed:", err);
+        setHasNoData(true);
+      } finally {
+        setLoading(false);
       }
-
-      await proceedWithLoading(budgets);
     }
 
     async function proceedWithLoading(budgets: any[]) {
@@ -80,28 +80,27 @@ export default function DashboardPage() {
       const monthly = budgets
         .filter((b) => b.budget_type === "monthly" && b.status === "active")
         .sort((a, b) => b.start_date.localeCompare(a.start_date));
-      const budget = monthly[0] ?? budgets.at(-1)!
-      setActiveBudget(budget);
+      const budget = monthly[0] ?? budgets.at(-1)!;
 
-      const households = await db.households.toArray();
-      if (households[0]) setHousehold(households[0]);
+      // Fetch all data in parallel
+      const [households, cats, txs] = await Promise.all([
+        db.households.toArray(),
+        db.categories.where("budget_id").equals(budget.id).sortBy("sort_order"),
+        db.transactions.where("budget_id").equals(budget.id).sortBy("date").then((arr) => arr.toReversed()),
+      ]);
 
-      const cats = await db.categories
-        .where("budget_id")
-        .equals(budget.id)
-        .sortBy("sort_order");
-      setCategories(cats);
-
-      const txs = await db.transactions
-        .where("budget_id")
-        .equals(budget.id)
-        .sortBy("date")
-        .then((arr) => arr.toReversed());
-      setTransactions(txs);
+      // Single store update → single re-render
+      useAppStore.setState({
+        activeBudget: budget,
+        ...(households[0] ? { household: households[0] } : {}),
+        categories: cats,
+        transactions: txs,
+      });
     }
 
     load(user);
-  }, [user, setActiveBudget, setCategories, setTransactions, setHousehold]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const recentTxs = transactions.slice(0, 5);
 
@@ -124,7 +123,17 @@ export default function DashboardPage() {
     );
   }
 
-  if (!activeBudget || !stats || categories.length === 0) {
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={32} className="animate-spin text-primary" />
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!activeBudget || !stats) {
     return (
       <AppShell>
         <div className="flex items-center justify-center py-20">

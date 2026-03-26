@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendPasswordResetEmail } from "@/lib/sendgrid";
+import { rateLimit, retryAfterSeconds, isValidEmail } from "@/lib/rate-limit";
 
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -11,18 +12,46 @@ function getAdminClient() {
   });
 }
 
+// 3 reset emails per address per 15 minutes
+const WINDOW_MS = 15 * 60 * 1000;
+const MAX_PER_WINDOW = 3;
+
 export async function POST(req: NextRequest) {
   try {
-    const { email, redirectTo } = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
-    if (!email || typeof email !== "string") {
-      return NextResponse.json({ error: "email is required" }, { status: 400 });
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const { redirectTo } = body;
+
+    if (!isValidEmail(email)) {
+      // Don't reveal whether the email exists — silently succeed
+      return NextResponse.json({ ok: true });
+    }
+
+    // Rate limit — still return 200 to prevent email enumeration
+    const rl = rateLimit(`send-reset:${email}`, WINDOW_MS, MAX_PER_WINDOW);
+    if (!rl.allowed) {
+      // Return 200 (not 429) so attackers can't confirm the email is known
+      return NextResponse.json({ ok: true });
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:8090";
-    const finalRedirect = redirectTo ?? `${appUrl}/reset-password`;
+    const finalRedirect =
+      typeof redirectTo === "string" && redirectTo.startsWith("http")
+        ? redirectTo
+        : `${appUrl}/reset-password`;
 
-    const admin = getAdminClient();
+    let admin;
+    try {
+      admin = getAdminClient();
+    } catch {
+      // Supabase not configured — silently succeed (demo mode)
+      return NextResponse.json({ ok: true });
+    }
+
     const { data, error } = await admin.auth.admin.generateLink({
       type: "recovery",
       email,
@@ -31,7 +60,6 @@ export async function POST(req: NextRequest) {
 
     if (error || !data.properties?.action_link) {
       console.error("[send-reset] generateLink error:", error);
-      // Don't reveal whether the email exists — always appear to succeed
       return NextResponse.json({ ok: true });
     }
 

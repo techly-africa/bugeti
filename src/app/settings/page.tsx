@@ -56,15 +56,22 @@ export default function SettingsPage() {
 
     try {
       // Get the caller's JWT so the server-side invite route can verify identity
-      const session = isSupabaseConfigured()
-        ? (await getSupabase().auth.getSession()).data.session
-        : null;
+      let token: string | null = null;
+      if (isSupabaseConfigured()) {
+        const { data: { session } } = await getSupabase().auth.getSession();
+        if (!session) {
+          toast.error("Session expired. Please sign in again.");
+          router.push("/auth");
+          return;
+        }
+        token = session.access_token;
+      }
 
       const res = await fetch("/api/invite", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           email: memberEmail,

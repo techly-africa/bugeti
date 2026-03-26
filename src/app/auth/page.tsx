@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,48 +34,56 @@ export default function AuthPage() {
   // Sign In state
   const [siEmail, setSiEmail] = useState("");
   const [siPassword, setSiPassword] = useState("");
+  const [siShowPw, setSiShowPw] = useState(false);
 
   // Sign Up state
   const [suEmail, setSuEmail] = useState("");
   const [suPassword, setSuPassword] = useState("");
   const [suName, setSuName] = useState("");
+  const [suShowPw, setSuShowPw] = useState(false);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { data, error } = await signIn(siEmail, siPassword);
-    setLoading(false);
+    try {
+      const { data, error } = await signIn(siEmail, siPassword);
 
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
 
-    if (data.user) {
-      setUser({
-        id: data.user.id,
-        email: data.user.email!,
-        display_name:
-          data.user.user_metadata?.display_name ?? siEmail.split("@")[0],
-        preferred_language: "en",
-        created_at: data.user.created_at,
-      });
-      router.push("/dashboard");
+      if (data.user) {
+        setUser({
+          id: data.user.id,
+          email: data.user.email!,
+          display_name:
+            data.user.user_metadata?.display_name ?? siEmail.split("@")[0],
+          preferred_language: "en",
+          created_at: data.user.created_at,
+        });
+        router.push("/dashboard");
+      }
+    } catch {
+      toast.error("Something went wrong. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { data, error } = await signUp(suEmail, suPassword, suName);
+    try {
+      const { data, error } = await signUp(suEmail, suPassword, suName);
 
-    if (error) {
-      setLoading(false);
-      toast.error(error.message);
-      return;
-    }
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
 
-    if (data.user) {
+      if (!data.user) return;
+
       setUser({
         id: data.user.id,
         email: data.user.email!,
@@ -90,7 +98,6 @@ export default function AuthPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: suEmail }),
       });
-      setLoading(false);
 
       if (!res.ok) {
         toast.error("Account created but couldn't send verification email. Please try again.");
@@ -106,6 +113,10 @@ export default function AuthPage() {
         toast.success("Check your email for a verification code.");
       }
       router.push("/verify");
+    } catch {
+      toast.error("Something went wrong. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -160,13 +171,24 @@ export default function AuthPage() {
                       Forgot password?
                     </Link>
                   </div>
-                  <Input
-                    type="password"
-                    placeholder="••••••••"
-                    value={siPassword}
-                    onChange={(e) => setSiPassword(e.target.value)}
-                    required
-                  />
+                  <div className="relative">
+                    <Input
+                      type={siShowPw ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={siPassword}
+                      onChange={(e) => setSiPassword(e.target.value)}
+                      className="pr-10"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSiShowPw((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      tabIndex={-1}
+                    >
+                      {siShowPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? (
@@ -210,14 +232,25 @@ export default function AuthPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>{t("password")}</Label>
-                  <Input
-                    type="password"
-                    placeholder="Min. 8 characters"
-                    value={suPassword}
-                    onChange={(e) => setSuPassword(e.target.value)}
-                    minLength={8}
-                    required
-                  />
+                  <div className="relative">
+                    <Input
+                      type={suShowPw ? "text" : "password"}
+                      placeholder="Min. 8 characters"
+                      value={suPassword}
+                      onChange={(e) => setSuPassword(e.target.value)}
+                      className="pr-10"
+                      minLength={8}
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSuShowPw((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      tabIndex={-1}
+                    >
+                      {suShowPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? (

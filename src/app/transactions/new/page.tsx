@@ -94,22 +94,23 @@ export default function NewTransactionPage() {
       if (receipt && navigator.onLine) {
         if (!receipt.type.startsWith("image/")) {
           toast.error("Receipt must be an image file (JPEG, PNG, etc.)");
-          setLoading(false);
           return;
         }
         if (receipt.size > 5 * 1024 * 1024) {
           toast.error("Receipt image must be smaller than 5 MB");
-          setLoading(false);
           return;
         }
         // Use only a generated ID as the filename — never trust the original name
         const ext = receipt.type.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
         const path = `receipts/${user.id}/${generateId()}.${ext}`;
-        const { data: uploadData } = await supabase.storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
           .from("bugeti-receipts")
           .upload(path, receipt, { contentType: receipt.type });
-        if (uploadData) {
-          // Store the storage path; generate signed URLs on-demand when displaying
+        if (uploadError) {
+          // Non-fatal: save the transaction without a receipt rather than blocking the user
+          console.warn("[new-tx] Receipt upload failed:", uploadError.message);
+          toast.warning("Receipt couldn't be uploaded — transaction saved without it.");
+        } else if (uploadData) {
           receipt_url = uploadData.path;
         }
       }

@@ -19,6 +19,7 @@ import {
   RULE_TARGETS,
   formatRWF,
 } from "@/lib/constants";
+import { distribute503020 } from "@/lib/budget-rule";
 import { useAppStore, useUser } from "@/store";
 import { db } from "@/db";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
@@ -108,19 +109,8 @@ export default function OnboardingPage() {
       return;
     }
     setCategoriesList((prev) => {
-      const bucketCounts = { needs: 0, wants: 0, savings: 0 };
-      prev.forEach((c) => {
-        if (!c.selected) return;
-        bucketCounts[CATEGORY_RULES[c.name] ?? "wants"]++;
-      });
-      return prev.map((c) => {
-        if (!c.selected) return c;
-        const rule = CATEGORY_RULES[c.name] ?? "wants";
-        const share = bucketCounts[rule] > 0
-          ? Math.round((monthlyIncome * RULE_TARGETS[rule]) / bucketCounts[rule])
-          : 0;
-        return { ...c, planned_amount: share };
-      });
+      const results = distribute503020(monthlyIncome, prev);
+      return prev.map((cat, i) => ({ ...cat, planned_amount: results[i].planned_amount }));
     });
     toast.success("Amounts filled using 50/30/20 rule");
   };

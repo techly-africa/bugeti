@@ -63,42 +63,48 @@ export default function VerifyPage() {
     if (!token) return;
 
     setLoading(true);
-    const res = await fetch("/api/email/verify-otp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token,
-        otp,
-        displayName: user?.display_name,
-      }),
-    });
-    const data = await res.json();
-    setLoading(false);
-
-    if (!res.ok) {
-      toast.error(data.error ?? "Incorrect code");
-      return;
-    }
-
-    sessionStorage.removeItem("otp_token");
-    toast.success("Email verified!");
-
-    // Establish a Supabase session from the magic-link token returned by the server.
-    // Without this, the client has no JWT and all authenticated Supabase calls get 401.
-    if (isSupabaseConfigured() && data.supabaseToken) {
-      const { error: sessionErr } = await supabase.auth.verifyOtp({
-        token_hash: data.supabaseToken.token_hash,
-        type: "magiclink",
+    try {
+      const res = await fetch("/api/email/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token,
+          otp,
+          displayName: user?.display_name,
+        }),
       });
-      if (sessionErr) console.warn("[verify] Supabase session creation failed:", sessionErr.message);
-    }
+      const data = await res.json();
 
-    // Check if user already has data on Supabase (e.g. returning user or invited)
-    const hasData = await syncDown(data.user_id || user?.id || "anonymous");
-    if (hasData) {
-      window.location.href = "/dashboard";
-    } else {
-      window.location.href = "/onboarding";
+      if (!res.ok) {
+        toast.error(data.error ?? "Incorrect code");
+        return;
+      }
+
+      sessionStorage.removeItem("otp_token");
+      toast.success("Email verified!");
+
+      // Establish a Supabase session from the magic-link token returned by the server.
+      if (isSupabaseConfigured() && data.supabaseToken) {
+        const { error: sessionErr } = await supabase.auth.verifyOtp({
+          token_hash: data.supabaseToken.token_hash,
+          type: "magiclink",
+        });
+        if (sessionErr) console.warn("[verify] Supabase session creation failed:", sessionErr.message);
+      }
+
+      // Check if user already has data on Supabase (e.g. returning user or invited)
+      let hasData = false;
+      try {
+        hasData = await syncDown(data.user_id || user?.id || "anonymous");
+      } catch (syncErr) {
+        console.warn("[verify] syncDown failed, proceeding to onboarding:", syncErr);
+      }
+
+      window.location.href = hasData ? "/dashboard" : "/onboarding";
+    } catch {
+      toast.error("Something went wrong. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -107,24 +113,29 @@ export default function VerifyPage() {
     if (!email) return;
 
     setResending(true);
-    const res = await fetch("/api/email/send-otp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    const data = await res.json();
-    setResending(false);
+    try {
+      const res = await fetch("/api/email/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
 
-    if (!res.ok) {
-      toast.error("Failed to resend code");
-      return;
+      if (!res.ok) {
+        toast.error(data.error ?? "Failed to resend code");
+        return;
+      }
+
+      sessionStorage.setItem("otp_token", data.token);
+      setDigits(["", "", "", "", "", ""]);
+      inputRefs.current[0]?.focus();
+      setCountdown(60);
+      toast.success("New code sent!");
+    } catch {
+      toast.error("Could not resend code. Please check your connection.");
+    } finally {
+      setResending(false);
     }
-
-    sessionStorage.setItem("otp_token", data.token);
-    setDigits(["", "", "", "", "", ""]);
-    inputRefs.current[0]?.focus();
-    setCountdown(60);
-    toast.success("New code sent!");
   };
 
   const email = typeof window !== "undefined"
@@ -132,7 +143,7 @@ export default function VerifyPage() {
     : "";
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-background p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-linear-to-br from-green-50 to-background p-4">
       <div className="flex flex-col items-center gap-4 mb-6">
         <Logo variant="icon" height={80} />
       </div>

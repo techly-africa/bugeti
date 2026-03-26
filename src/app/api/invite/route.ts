@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendInviteEmail } from "@/lib/sendgrid";
+import { rateLimit, retryAfterSeconds, isValidEmail } from "@/lib/rate-limit";
 
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -11,13 +12,22 @@ function getAdminClient() {
   });
 }
 
+// 5 invites per user per hour
+const WINDOW_MS = 60 * 60 * 1000;
+const MAX_PER_WINDOW = 5;
+
 export async function POST(req: NextRequest) {
   try {
-    const { email, displayName, householdId, householdName, invitedBy } =
-      await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
-    if (!email || !householdId || !householdName || !invitedBy) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    const { householdId, householdName, invitedBy, displayName } = body;
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+
+    if (!isValidEmail(email) || !householdId || !householdName || !invitedBy) {
+      return NextResponse.json({ error: "Missing or invalid required fields" }, { status: 400 });
     }
 
     // Verify the caller is an authenticated Supabase user
@@ -33,6 +43,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Rate limit per authenticated user
+    const rl = rateLimit(`invite:${callerData.user.id}`, WINDOW_MS, MAX_PER_WINDOW);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many invites sent. Please wait before sending more." },
+        {
+          status: 429,
+          headers: { "Retry-After": retryAfterSeconds(rl.retryAfterMs) },
+        }
+      );
+    }
+
     // Confirm the caller is a member of the household they're inviting to
     const { data: membership } = await admin
       .from("household_members")
@@ -45,8 +67,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Generate the invite link — Supabase emails it, but we redirect through
-    // our own SendGrid template for consistent branding.
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:8090";
     const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
       type: "invite",
@@ -65,11 +85,9 @@ export async function POST(req: NextRequest) {
     const inviteUrl = linkData.properties.action_link;
     const userId = linkData.user.id;
 
-    // Send branded invite email via SendGrid
     try {
       await sendInviteEmail(email, invitedBy, householdName, inviteUrl);
     } catch (emailErr) {
-      // In dev / demo: log the link so it can be used without email configured
       if (process.env.NODE_ENV === "development") {
         console.log(`[invite] Invite URL for ${email}: ${inviteUrl}`);
       } else {

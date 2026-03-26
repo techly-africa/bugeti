@@ -1,34 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac, randomInt } from "crypto";
 import { sendOtpEmail } from "@/lib/sendgrid";
+import { generateOtp, signOtpToken } from "@/lib/otp";
+import { rateLimit, retryAfterSeconds, isValidEmail } from "@/lib/rate-limit";
 
 const SECRET = process.env.OTP_SECRET ?? "bugeti-otp-fallback";
-const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-function signToken(email: string, otp: string, issuedAt: number): string {
-  const payload = `${email}:${otp}:${issuedAt}`;
-  const sig = createHmac("sha256", SECRET).update(payload).digest("hex");
-  return Buffer.from(JSON.stringify({ email, issuedAt, sig })).toString("base64url");
-}
+// 3 OTPs per email per 10 minutes — prevents OTP bombing / SendGrid abuse
+const WINDOW_MS = 10 * 60 * 1000;
+const MAX_PER_WINDOW = 3;
 
 export async function POST(req: NextRequest) {
   try {
-    const { email } = await req.json();
-    if (!email || typeof email !== "string") {
-      return NextResponse.json({ error: "email is required" }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    if (!body) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const otp = String(randomInt(100000, 999999));
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+
+    if (!isValidEmail(email)) {
+      return NextResponse.json({ error: "A valid email address is required" }, { status: 400 });
+    }
+
+    // Rate limit per email address
+    const rl = rateLimit(`send-otp:${email}`, WINDOW_MS, MAX_PER_WINDOW);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many OTP requests. Please wait before trying again." },
+        {
+          status: 429,
+          headers: { "Retry-After": retryAfterSeconds(rl.retryAfterMs) },
+        }
+      );
+    }
+
+    const otp = generateOtp();
     const issuedAt = Date.now();
-    const token = signToken(email, otp, issuedAt);
+    const token = signOtpToken(email, otp, issuedAt, SECRET);
 
     let emailSent = true;
     try {
       await sendOtpEmail(email, otp);
     } catch (err) {
       emailSent = false;
-      // Always log OTP to server console so it's visible in Vercel/server logs
-      // during SendGrid setup / sender verification.
       console.error("[send-otp] Email delivery failed:", err);
       console.log(`[AUTH] OTP for ${email}: ${otp}`);
     }
