@@ -43,7 +43,7 @@ import { formatRWF, generateId } from "@/lib/constants";
 import { useTrips, useAppStore } from "@/store";
 import { cn } from "@/lib/utils";
 import type { Budget, ItineraryItem, ItineraryItemType, Trip, TripStatus } from "@/lib/types";
-import { EVENT_TYPE_CONFIG } from "../page";
+import { EVENT_TYPE_CONFIG } from "@/lib/travel-config";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 

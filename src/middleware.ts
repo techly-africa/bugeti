@@ -17,7 +17,7 @@ export function middleware(req: NextRequest) {
   );
 
   // ── Block methods we never use on API routes ───────────────────────────────
-  const { pathname, method } = req.nextUrl;
+  const { pathname } = req.nextUrl;
   if (pathname.startsWith("/api/") && !["GET", "POST", "OPTIONS"].includes(req.method)) {
     return new NextResponse(null, { status: 405, headers: { Allow: "GET, POST, OPTIONS" } });
   }

@@ -26,23 +26,8 @@ import { formatRWF, generateId } from "@/lib/constants";
 import { useAppStore, useTrips, useUser, useHousehold } from "@/store";
 import { cn } from "@/lib/utils";
 import { SectionHelp } from "@/components/shared/SectionHelp";
+import { EVENT_TYPE_CONFIG } from "@/lib/travel-config";
 import type { Budget, EventType, Trip, TripStatus } from "@/lib/types";
-
-// ─── Event type config ────────────────────────────────────────────────────────
-
-export const EVENT_TYPE_CONFIG: Record<
-  EventType,
-  { label: string; emoji: string; coverEmojis: string[]; venue: string }
-> = {
-  travel:   { label: "Family Trip",          emoji: "✈️", coverEmojis: ["✈️","🏖️","🏔️","🏕️","🌍","🗺️","🚢","🚂","🏝️","🎒","🗽","🏯"], venue: "Destination" },
-  visit:    { label: "Visit",                emoji: "🏠", coverEmojis: ["🏠","🤝","👨‍👩‍👧‍👦","🚗","🛣️","🌺","🏡","🚌","🎁","🫂","🍽️","🌿"], venue: "Where" },
-  wedding:  { label: "Wedding / Ceremony",   emoji: "💍", coverEmojis: ["💍","👰","🤵","💒","🌹","💐","🥂","🎊","🕊️","💫","🪷","🎶"], venue: "Venue" },
-  event:    { label: "Event / Celebration",  emoji: "🎉", coverEmojis: ["🎉","🎊","🎈","🥳","🎆","🎇","🪅","🎭","🎪","🏟️","🎶","🌟"], venue: "Venue" },
-  birthday: { label: "Birthday",             emoji: "🎂", coverEmojis: ["🎂","🎁","🎈","🧁","🎀","🪅","🥳","🎠","🎡","🎢","🎯","🌈"], venue: "Location" },
-  school:   { label: "School Event",         emoji: "🎓", coverEmojis: ["🎓","📚","🏫","📝","✏️","🏆","🎒","📖","🔬","🏅","🌟","🖊️"], venue: "School / Venue" },
-  religious:{ label: "Religious / Cultural", emoji: "🙏", coverEmojis: ["🙏","⛪","🕌","🌿","✨","🕊️","🌙","🪔","🌸","🎋","🫶","🕍"], venue: "Location" },
-  other:    { label: "Other",                emoji: "📅", coverEmojis: ["📅","🗓️","⭐","🌟","💫","✨","🎯","📌","🎪","🌈","🎨","🎵"], venue: "Location" },
-};
 
 const STATUS_CONFIG: Record<TripStatus, { label: string; color: string }> = {
   planning:  { label: "Planning",   color: "bg-amber-100 text-amber-800 border-amber-200" },

@@ -63,6 +63,7 @@ export interface Budget {
   revenue_duration?: string;
   created_by: string;
   created_at: string;
+  updated_at?: string;
 }
 
 // ─── Category ─────────────────────────────────────────────────────────────────
