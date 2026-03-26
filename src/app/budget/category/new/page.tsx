@@ -1,7 +1,7 @@
 "use client";
 
 export const dynamic = "force-dynamic";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -13,7 +13,8 @@ import { AmountInput } from "@/components/shared/AmountInput";
 import { db } from "@/db";
 import { generateId } from "@/lib/constants";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { useAppStore, useActiveBudget, useCategories, useUser } from "@/store";
+import { useAppStore, useActiveBudget, useCategories, useHousehold, useUser } from "@/store";
+import type { HouseholdMember } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // ─── Emoji / color presets ───────────────────────────────────────────────────
@@ -39,6 +40,7 @@ function NewCategoryForm() {
   const activeBudget = useActiveBudget();
   const categories = useCategories();
   const { setCategories } = useAppStore();
+  const household = useHousehold();
 
   const parentCat = parentId ? categories.find((c) => c.id === parentId) : null;
 
@@ -47,6 +49,13 @@ function NewCategoryForm() {
   const [color, setColor] = useState("#6b7280");
   const [plannedAmount, setPlannedAmount] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [members, setMembers] = useState<HouseholdMember[]>([]);
+  const [assignedTo, setAssignedTo] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!household?.id) return;
+    db.members.where("household_id").equals(household.id).toArray().then(setMembers);
+  }, [household?.id]);
 
   const handleSave = async () => {
     if (!activeBudget) {
@@ -73,6 +82,7 @@ function NewCategoryForm() {
         sort_order: categories.filter(
           (c) => c.parent_id === (parentId ?? null)
         ).length,
+        assigned_to: assignedTo,
       };
 
       // Save locally
@@ -187,6 +197,40 @@ function NewCategoryForm() {
               className="w-full"
             />
           </div>
+
+          {/* Assignee */}
+          {members.length > 0 && (
+            <div className="space-y-2">
+              <Label>Assign to</Label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setAssignedTo(null)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-sm border-2 transition-all",
+                    assignedTo === null
+                      ? "border-primary bg-primary/10 font-medium"
+                      : "border-transparent bg-muted hover:border-muted-foreground"
+                  )}
+                >
+                  Shared
+                </button>
+                {members.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setAssignedTo(m.id)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-sm border-2 transition-all",
+                      assignedTo === m.id
+                        ? "border-primary bg-primary/10 font-medium"
+                        : "border-transparent bg-muted hover:border-muted-foreground"
+                    )}
+                  >
+                    👤 {m.display_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Context / parent info */}
           {parentCat && (

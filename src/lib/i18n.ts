@@ -14,6 +14,7 @@ export const translations = {
     customBudgets: "Custom Budgets",
     ikimina: "Ikimina",
     reports: "Reports",
+    bills: "Bills",
 
     // Auth
     signIn: "Sign In",
@@ -169,8 +170,8 @@ export const translations = {
     ikiminaPaused: "Paused",
 
     // Travel
-    travel: "Travel",
-    travelTitle: "Trips & Vacations",
+    travel: "Our Plans",
+    travelTitle: "Our Plans",
     newTrip: "New Trip",
     tripName: "Trip Name",
     destination: "Destination",
@@ -283,6 +284,7 @@ export const translations = {
     customBudgets: "Bugeti Zihariye",
     ikimina: "Ikimina",
     reports: "Raporo",
+    bills: "Fagitire",
 
     // Auth
     signIn: "Injira",
@@ -438,8 +440,8 @@ export const translations = {
     ikiminaPaused: "Ihagaritse",
 
     // Travel
-    travel: "Ingendo",
-    travelTitle: "Ingendo & Ikiruhuko",
+    travel: "Gahunda",
+    travelTitle: "Gahunda zacu",
     newTrip: "Ingendo nshya",
     tripName: "Izina ry'ingendo",
     destination: "Aho ugiye",

@@ -78,6 +78,7 @@ export interface Category {
   icon: string;
   color: string;
   sort_order: number;
+  assigned_to?: string | null; // household_member.id — who is responsible
 }
 
 // ─── Transaction ──────────────────────────────────────────────────────────────
@@ -97,6 +98,7 @@ export interface Transaction {
   ocr_raw?: string;
   synced: boolean;
   created_at: string;
+  updated_at?: string;
 }
 
 // ─── Ikimina (Group Savings Circle) ───────────────────────────────────────────
@@ -163,27 +165,48 @@ export interface UserProfile {
   created_at: string;
 }
 
-// ─── Travel ───────────────────────────────────────────────────────────────────
+// ─── Travel & Events ──────────────────────────────────────────────────────────
 
 export type TripStatus = "planning" | "upcoming" | "active" | "completed";
+
+/**
+ * What kind of family event this is.
+ * Drives the UI: cover emojis, itinerary labels, gift-budget field, etc.
+ */
+export type EventType =
+  | "travel"     // Family vacation / trip abroad
+  | "visit"      // Visiting friends or relatives
+  | "wedding"    // Wedding, kwita izina, umuganura
+  | "event"      // Community celebration or ceremony
+  | "birthday"   // Kids' or family birthday
+  | "school"     // Graduation, prize-giving, parents' day
+  | "religious"  // Church, mosque, umuganda, national day
+  | "other";
 
 export type ItineraryItemType =
   | "transport"
   | "accommodation"
   | "activity"
   | "food"
+  | "gift"       // Gifts / wedding contributions / ibice
+  | "ceremony"   // Ceremony or main event moment
   | "other";
 
 export interface Trip {
   id: string;
   household_id: string;
   name: string;
-  destination: string;
-  start_date: string;  // ISO date
-  end_date: string;    // ISO date
+  destination: string;   // Location / venue
+  start_date: string;    // ISO date
+  end_date: string;      // ISO date
   status: TripStatus;
   cover_emoji: string;
-  budget_id?: string;  // optional linked budget envelope
+  event_type: EventType; // defaults to "travel" for backward compat
+  budget_id?: string;    // optional spending envelope (transactions linked here)
+  savings_goal_id?: string; // optional savings-budget being built toward this event
+  gift_budget?: number;  // planned spend on gifts (wedding, birthday, etc.)
+  attendees?: string[];           // household member user IDs who are attending
+  reminder_days_before?: number;  // 0 = day-of, 1 = 1 day before, 3, 7, 14
   notes?: string;
   created_by: string;
   created_at: string;
@@ -199,6 +222,27 @@ export interface ItineraryItem {
   location?: string;
   type: ItineraryItemType;
   estimated_cost: number;
+  created_at: string;
+}
+
+// ─── Recurring Payments ───────────────────────────────────────────────────────
+
+export type RecurringFrequency = "monthly" | "weekly" | "quarterly" | "yearly";
+
+export interface RecurringPayment {
+  id: string;
+  household_id: string;
+  name: string;
+  name_rw?: string;
+  amount: number;
+  frequency: RecurringFrequency;
+  due_day: number;         // day of month (1–28)
+  icon: string;
+  category_id?: string;    // linked budget category
+  payment_method: PaymentMethod;
+  notes?: string;
+  active: boolean;
+  last_paid_at?: string;   // ISO date of last payment
   created_at: string;
 }
 

@@ -203,6 +203,10 @@ create policy "Transaction update" on public.transactions
 -- ─── 8. Ikimina — migrate to get_my_household_ids() + WITH CHECK ──────────────
 
 drop policy if exists "Ikimina household access" on public.ikimina;
+drop policy if exists "Ikimina select" on public.ikimina;
+drop policy if exists "Ikimina insert" on public.ikimina;
+drop policy if exists "Ikimina update" on public.ikimina;
+drop policy if exists "Ikimina delete" on public.ikimina;
 
 create policy "Ikimina select" on public.ikimina
   for select using (
@@ -235,6 +239,10 @@ create policy "Ikimina delete" on public.ikimina
 -- Ikimina contributions: use get_my_household_ids() via ikimina join
 
 drop policy if exists "Ikimina contributions access" on public.ikimina_contributions;
+drop policy if exists "Ikimina contributions select" on public.ikimina_contributions;
+drop policy if exists "Ikimina contributions insert" on public.ikimina_contributions;
+drop policy if exists "Ikimina contributions update" on public.ikimina_contributions;
+drop policy if exists "Ikimina contributions delete" on public.ikimina_contributions;
 
 create policy "Ikimina contributions select" on public.ikimina_contributions
   for select using (

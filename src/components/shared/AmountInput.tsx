@@ -1,12 +1,16 @@
 "use client";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 interface AmountInputProps {
   value: number;
   onChange: (value: number) => void;
   placeholder?: string;
+  /** Applied to the outer wrapper div (controls width, e.g. "w-28") */
   className?: string;
+  /** Applied directly to the inner Input (controls height, e.g. "h-14") */
+  inputClassName?: string;
 }
 
 export function AmountInput({
@@ -14,6 +18,7 @@ export function AmountInput({
   onChange,
   placeholder = "0",
   className,
+  inputClassName,
 }: AmountInputProps) {
   const [display, setDisplay] = useState(
     value > 0 ? value.toLocaleString("en-RW") : ""
@@ -27,8 +32,8 @@ export function AmountInput({
   };
 
   return (
-    <div className={`relative flex items-center ${className}`}>
-      <span className="absolute left-3 text-sm text-muted-foreground font-medium">
+    <div className={cn("relative flex items-center", className)}>
+      <span className="absolute left-3 text-sm text-muted-foreground font-medium pointer-events-none select-none">
         RWF
       </span>
       <Input
@@ -37,7 +42,7 @@ export function AmountInput({
         value={display}
         onChange={handleChange}
         placeholder={placeholder}
-        className="pl-12 font-mono text-lg font-semibold"
+        className={cn("pl-12 font-mono text-lg font-semibold h-12", inputClassName)}
       />
     </div>
   );

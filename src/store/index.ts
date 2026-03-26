@@ -79,6 +79,10 @@ interface AppState {
   isSidebarOpen: boolean;
   setSidebarOpen: (v: boolean) => void;
 
+  // ── Demo mode ──
+  isDemo: boolean;
+  setIsDemo: (v: boolean) => void;
+
   // ── Logout ──
   /** Resets all in-memory state. Pair with clearAllData() from db/index.ts. */
   resetAppData: () => void;
@@ -180,6 +184,10 @@ export const useAppStore = create<AppState>()(
       isSidebarOpen: false,
       setSidebarOpen: (isSidebarOpen) => set({ isSidebarOpen }),
 
+      // Demo mode
+      isDemo: false,
+      setIsDemo: (isDemo) => set({ isDemo }),
+
       // Logout reset — clears all runtime data; lang preference is preserved
       resetAppData: () =>
         set({
@@ -193,6 +201,7 @@ export const useAppStore = create<AppState>()(
           ikiminas: [],
           ikiminaContributions: [],
           trips: [],
+          isDemo: false,
         }),
     }),
     {
@@ -221,3 +230,4 @@ export const useIsOnline = () => useAppStore((s) => s.isOnline);
 export const useIkiminas = () => useAppStore((s) => s.ikiminas);
 export const useCustomBudgets = () => useAppStore((s) => s.customBudgets);
 export const useTrips = () => useAppStore((s) => s.trips);
+export const useIsDemo = () => useAppStore((s) => s.isDemo);

@@ -1,9 +1,9 @@
 "use client";
 
 export const dynamic = "force-dynamic";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
-import { PlusCircle } from "lucide-react";
+import { Download, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AppShell } from "@/components/layout/AppShell";
@@ -30,17 +30,48 @@ export default function TransactionsPage() {
     );
   });
 
+  const handleExportCSV = useCallback(() => {
+    const header = ["Date", "Type", "Category", "Note", "Amount (RWF)", "Payment Method"];
+    const rows = filtered.map((tx) => {
+      const cat = catMap[tx.category_id];
+      return [
+        tx.date,
+        tx.type,
+        cat?.name ?? "",
+        `"${(tx.note ?? "").replace(/"/g, '""')}"`,
+        tx.amount,
+        tx.payment_method,
+      ].join(",");
+    });
+    const csv = [header.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bugeti-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filtered, catMap]);
+
   return (
     <AppShell>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="font-bold text-xl">{t("transactions")}</h1>
-          <Button asChild size="sm">
-            <Link href="/transactions/new">
-              <PlusCircle size={14} className="mr-1" />
-              {t("add")}
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            {filtered.length > 0 && (
+              <Button variant="outline" size="sm" onClick={handleExportCSV} title="Export CSV">
+                <Download size={14} className="mr-1" />
+                CSV
+              </Button>
+            )}
+            <Button asChild size="sm">
+              <Link href="/transactions/new">
+                <PlusCircle size={14} className="mr-1" />
+                {t("add")}
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <Input

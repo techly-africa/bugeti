@@ -1,13 +1,17 @@
 "use client";
 
 export const dynamic = "force-dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { SectionHelp } from "@/components/shared/SectionHelp";
 import { useT } from "@/hooks/useT";
 import { useTransactions, useCategories, useLang } from "@/store";
 import { formatRWF } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { translations } from "@/lib/i18n";
+import { db } from "@/db";
+import type { UserProfile, HouseholdMember } from "@/lib/types";
+import { useHousehold } from "@/store";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function groupByMonth(transactions: ReturnType<typeof useTransactions>) {
@@ -237,8 +241,21 @@ export default function ReportsPage() {
   const transactions = useTransactions();
   const categories = useCategories();
 
+  const household = useHousehold();
+
   const [activeTab, setActiveTab] = useState<"reports" | "learn">("reports");
   const [openLesson, setOpenLesson] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [members, setMembers] = useState<HouseholdMember[]>([]);
+
+  useEffect(() => {
+    db.profiles.toArray().then(setProfiles);
+  }, []);
+
+  useEffect(() => {
+    if (!household?.id) return;
+    db.members.where("household_id").equals(household.id).toArray().then(setMembers);
+  }, [household?.id]);
 
   const monthly = useMemo(() => groupByMonth(transactions), [transactions]);
 
@@ -293,15 +310,56 @@ export default function ReportsPage() {
     ? Math.round(monthly.reduce((s, [, v]) => s + v.expense, 0) / monthly.length)
     : 0;
 
+  const memberBreakdown = useMemo(() => {
+    const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p]));
+    const map: Record<string, { profile: UserProfile | null; expense: number; income: number }> = {};
+    for (const tx of transactions) {
+      if (tx.type === "transfer") continue;
+      const uid = tx.added_by;
+      if (!map[uid]) map[uid] = { profile: profileMap[uid] ?? null, expense: 0, income: 0 };
+      if (tx.type === "expense") map[uid].expense += tx.amount;
+      else map[uid].income += tx.amount;
+    }
+    return Object.values(map).sort((a, b) => b.expense - a.expense);
+  }, [transactions, profiles]);
+
+  const assigneeBreakdown = useMemo(() => {
+    const catMap: Record<string, string | null> = {};
+    for (const c of categories) catMap[c.id] = c.assigned_to ?? null;
+
+    const map: Record<string, { name: string; expense: number }> = {};
+    for (const tx of transactions) {
+      if (tx.type !== "expense") continue;
+      const memberId = tx.category_id ? catMap[tx.category_id] : null;
+      if (!memberId) continue;
+      if (!map[memberId]) {
+        const m = members.find((m) => m.id === memberId);
+        map[memberId] = { name: m?.display_name ?? "Unknown", expense: 0 };
+      }
+      map[memberId].expense += tx.amount;
+    }
+    return Object.values(map).sort((a, b) => b.expense - a.expense);
+  }, [transactions, categories, members]);
+
   const currentLesson = openLesson ? LESSONS.find((l) => l.id === openLesson) : null;
 
   return (
     <AppShell>
       <div className="space-y-5">
         {/* Header */}
-        <h1 className="font-bold text-xl">
-          {activeTab === "reports" ? `📈 ${t("reportsTitle")}` : "🎓 Learning Center"}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="font-bold text-xl">
+            {activeTab === "reports" ? `📈 ${t("reportsTitle")}` : "🎓 Learning Center"}
+          </h1>
+          {activeTab === "reports" && (
+            <SectionHelp title="Reports">
+              <p>Reports show how your household has spent and saved over time, pulled from all recorded transactions.</p>
+              <p><strong>Monthly trend</strong> — compares income vs. expenses over the last 6 months so you can spot patterns.</p>
+              <p><strong>Top categories</strong> — shows where most of your money goes each month.</p>
+              <p><strong>Savings rate</strong> — the percentage of your income you kept. A healthy target is 20% or more.</p>
+            </SectionHelp>
+          )}
+        </div>
 
         {/* Tabs */}
         <div className="flex gap-1 bg-muted/40 rounded-xl p-1">
@@ -332,12 +390,12 @@ export default function ReportsPage() {
         {/* ── REPORTS TAB ── */}
         {activeTab === "reports" && (
           <>
-            {transactions.length === 0 ? (
+            {transactions.length === 0 || (totalIncome === 0 && totalExpense === 0) ? (
               <div className="flex flex-col items-center gap-3 py-20 text-center">
                 <span className="text-5xl">📈</span>
                 <p className="font-semibold text-lg">{t("reportsTitle")}</p>
                 <p className="text-sm text-muted-foreground max-w-xs">
-                  Add transactions to see your spending trends and reports
+                  Add income and expense transactions to see your spending trends and reports
                 </p>
               </div>
             ) : (
@@ -435,6 +493,65 @@ export default function ReportsPage() {
                             </div>
                             <p className="font-bold">{formatRWF(amount)}</p>
                             <p className="text-xs opacity-70">{pct}% of expenses</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {memberBreakdown.length > 1 && (
+                  <section>
+                    <h2 className="font-semibold text-sm mb-3">👥 Spending by Member</h2>
+                    <div className="bg-card border rounded-2xl overflow-hidden divide-y">
+                      {memberBreakdown.map((row, i) => {
+                        const name = row.profile?.display_name ?? row.profile?.email ?? `Member ${i + 1}`;
+                        const pct = totalExpense > 0 ? Math.round((row.expense / totalExpense) * 100) : 0;
+                        return (
+                          <div key={i} className="flex items-center gap-3 px-4 py-3">
+                            <div className="shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
+                              {name.slice(0, 1).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-sm font-medium truncate">{name}</p>
+                                <p className="text-sm font-semibold text-red-500">{formatRWF(row.expense)}</p>
+                              </div>
+                              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                            <span className="text-xs text-muted-foreground w-8 text-right">{pct}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {assigneeBreakdown.length > 0 && (
+                  <section className="bg-card rounded-2xl border overflow-hidden">
+                    <div className="px-4 pt-4 pb-2">
+                      <h2 className="font-semibold text-sm">📋 Spending by Responsibility</h2>
+                    </div>
+                    <div className="divide-y">
+                      {assigneeBreakdown.map((row) => {
+                        const pct = totalExpense > 0 ? Math.round((row.expense / totalExpense) * 100) : 0;
+                        return (
+                          <div key={row.name} className="flex items-center gap-3 px-4 py-3">
+                            <div className="shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
+                              {row.name.slice(0, 1).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <p className="text-sm font-medium truncate">{row.name}</p>
+                                <p className="text-sm font-semibold text-red-500">{formatRWF(row.expense)}</p>
+                              </div>
+                              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                            <span className="text-xs text-muted-foreground w-8 text-right">{pct}%</span>
                           </div>
                         );
                       })}

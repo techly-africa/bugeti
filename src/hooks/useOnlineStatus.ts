@@ -1,23 +1,30 @@
 "use client";
 import { useEffect } from "react";
+import { toast } from "sonner";
 import { useAppStore } from "@/store";
+import { syncUp } from "@/lib/sync";
 
 export function useOnlineStatus() {
   const setIsOnline = useAppStore((s) => s.setIsOnline);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = async () => {
+      setIsOnline(true);
+      const count = await syncUp();
+      if (count > 0) {
+        toast.success(`Back online — ${count} transaction${count > 1 ? "s" : ""} synced.`);
+      }
+    };
     const handleOffline = () => setIsOnline(false);
 
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
+    globalThis.addEventListener("online", handleOnline);
+    globalThis.addEventListener("offline", handleOffline);
 
-    // Set initial state
     setIsOnline(navigator.onLine);
 
     return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
+      globalThis.removeEventListener("online", handleOnline);
+      globalThis.removeEventListener("offline", handleOffline);
     };
   }, [setIsOnline]);
 }

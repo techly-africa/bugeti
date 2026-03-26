@@ -22,7 +22,7 @@ import {
 import { distribute503020 } from "@/lib/budget-rule";
 import { useAppStore, useUser } from "@/store";
 import { db } from "@/db";
-import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured, getSupabase } from "@/lib/supabase";
 import { useT } from "@/hooks/useT";
 import { Category, Transaction } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -219,36 +219,64 @@ export default function OnboardingPage() {
       setActiveBudget(budget);
       setCategories(finalCats);
 
-      // Send invitations to family members (fire-and-forget; don't block navigation)
+      // Send invitations to family members
       const emailsToInvite = inviteEmails.filter((e) => e.trim());
       if (emailsToInvite.length > 0 && isSupabaseConfigured()) {
-        const { createClient } = await import("@supabase/supabase-js");
-        const session = (await createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          { auth: { persistSession: false, autoRefreshToken: false } }
-        ).auth.getSession()).data.session;
+        // Use the already-authenticated client — NOT a fresh non-persisted one
+        const { data: { session } } = await getSupabase().auth.getSession();
+        const token = session?.access_token;
 
-        Promise.allSettled(
+        const results = await Promise.allSettled(
           emailsToInvite.map((email) =>
             fetch("/api/invite", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
               },
               body: JSON.stringify({
                 email,
-                householdId: householdId,
+                householdId,
                 householdName: household.name,
                 invitedBy: u.display_name,
               }),
-            })
+            }).then((r) => r.json().then((body) => ({ email, ok: r.ok, body })))
           )
-        ).then((results) => {
-          const sent = results.filter((r) => r.status === "fulfilled").length;
-          if (sent > 0) toast.success(`Invitation${sent > 1 ? "s" : ""} sent to ${sent} member${sent > 1 ? "s" : ""}.`);
-        });
+        );
+
+        // For each successful invite, create a local member record so settings shows them
+        let sent = 0;
+        for (const result of results) {
+          if (result.status !== "fulfilled" || !result.value.ok) continue;
+          const { email, body } = result.value;
+          const userId: string = body.userId;
+          if (!userId) continue;
+
+          const memberId = generateId();
+          const memberRecord = {
+            id: memberId,
+            household_id: householdId,
+            user_id: userId,
+            role: "member" as const,
+            display_name: email.split("@")[0],
+            joined_at: new Date().toISOString(),
+          };
+
+          await db.members.put(memberRecord);
+
+          if (navigator.onLine && isSupabaseConfigured()) {
+            try {
+              await supabase.from("household_members").upsert(memberRecord, { onConflict: "user_id,household_id" });
+            } catch (syncErr) {
+              console.warn("[onboarding] member sync failed:", syncErr);
+            }
+          }
+
+          sent++;
+        }
+
+        if (sent > 0) toast.success(`Invitation${sent > 1 ? "s" : ""} sent to ${sent} member${sent > 1 ? "s" : ""}.`);
+        else if (emailsToInvite.length > 0) toast.error("Invitations could not be sent. You can resend them from Settings.");
       }
 
       toast.success("Budget created! Let's go 🚀");
@@ -367,7 +395,7 @@ export default function OnboardingPage() {
                 <AmountInput
                   value={monthlyIncome}
                   onChange={setMonthlyIncome}
-                  className="text-lg h-12"
+                  inputClassName="h-14 text-xl"
                 />
               </div>
 
@@ -420,7 +448,7 @@ export default function OnboardingPage() {
                         key={p}
                         onClick={() => setBudgetPeriod(p)}
                         className={cn(
-                          "py-2 px-4 rounded-lg border text-sm font-medium transition-all",
+                          "py-3 px-4 rounded-lg border text-sm font-medium transition-all",
                           budgetPeriod === p
                             ? "border-primary bg-primary/5 text-primary"
                             : "border-muted text-muted-foreground"
@@ -497,7 +525,7 @@ export default function OnboardingPage() {
                           <Input
                             value={cat.icon}
                             onChange={(e) => updateCat(cat.id, { icon: e.target.value })}
-                            className="w-12 px-0 text-center text-xl"
+                            className="w-14 px-1 text-center text-xl"
                           />
                           <Input
                             value={cat.name}
@@ -528,7 +556,8 @@ export default function OnboardingPage() {
                               <AmountInput
                                 value={cat.planned_amount}
                                 onChange={(v) => updateCat(cat.id, { planned_amount: v })}
-                                className="w-28"
+                                className="w-36"
+                                inputClassName="h-10 text-sm"
                               />
                               <Button
                                 size="icon" variant="ghost" className="h-7 w-7"

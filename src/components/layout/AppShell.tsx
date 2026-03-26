@@ -7,7 +7,7 @@ import {
   Receipt,
   Settings,
   BarChart2,
-  Plane,
+  CalendarDays,
 } from "lucide-react";
 import { OfflineBanner } from "@/components/shared/OfflineBanner";
 import { DemoBanner } from "@/components/shared/DemoBanner";
@@ -20,10 +20,10 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/dashboard",    icon: LayoutDashboard, key: "dashboard"    as const },
-  { href: "/travel",       icon: Plane,            key: "travel"       as const },
-  { href: "/transactions", icon: Receipt,          key: "transactions" as const },
-  { href: "/reports",      icon: BarChart2,        key: "reports"      as const },
-  { href: "/settings",     icon: Settings,         key: "settings"     as const },
+  { href: "/travel",       icon: CalendarDays,    key: "travel"       as const },
+  { href: "/transactions", icon: Receipt,         key: "transactions" as const },
+  { href: "/reports",      icon: BarChart2,       key: "reports"      as const },
+  { href: "/settings",     icon: Settings,        key: "settings"     as const },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

@@ -38,7 +38,7 @@ export default function ResetPasswordPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (password !== confirm) {
       toast.error("Passwords don't match");
@@ -77,7 +77,7 @@ export default function ResetPasswordPage() {
           )}
         </CardHeader>
         <CardContent>
-          {done ? (
+          {done && (
             <div className="space-y-4 text-center py-2">
               <div className="mx-auto w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
                 <CheckCircle size={22} className="text-green-600" />
@@ -92,12 +92,14 @@ export default function ResetPasswordPage() {
                 <Link href="/auth">Go to sign in</Link>
               </Button>
             </div>
-          ) : !sessionReady ? (
+          )}
+          {!done && !sessionReady && (
             <div className="flex flex-col items-center gap-3 py-6 text-muted-foreground">
               <Loader2 size={24} className="animate-spin" />
               <p className="text-sm">Validating reset link…</p>
             </div>
-          ) : (
+          )}
+          {!done && sessionReady && (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <Label>New password</Label>
@@ -115,9 +117,9 @@ export default function ResetPasswordPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground rounded"
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>

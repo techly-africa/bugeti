@@ -5,6 +5,7 @@ import type {
   Household,
   HouseholdMember,
   ItineraryItem,
+  RecurringPayment,
   Transaction,
   Trip,
   UserProfile,
@@ -21,6 +22,7 @@ class BugetiDB extends Dexie {
   transactions!: EntityTable<Transaction, "id">;
   trips!: EntityTable<Trip, "id">;
   itinerary_items!: EntityTable<ItineraryItem, "id">;
+  recurring_payments!: EntityTable<RecurringPayment, "id">;
 
   constructor() {
     super("bugeti");
@@ -41,6 +43,28 @@ class BugetiDB extends Dexie {
       transactions: "id, category_id, budget_id, household_id, date, synced",
       trips: "id, household_id, status, start_date",
       itinerary_items: "id, trip_id, day",
+    });
+    this.version(3).stores({
+      profiles: "id, email",
+      households: "id, created_by",
+      members: "id, household_id, user_id",
+      budgets: "id, household_id, start_date, end_date",
+      categories: "id, budget_id, sort_order",
+      transactions: "id, category_id, budget_id, household_id, date, synced, updated_at",
+      trips: "id, household_id, status, start_date",
+      itinerary_items: "id, trip_id, day",
+    });
+    // v4: index assigned_to on categories for member-based filtering
+    this.version(4).stores({
+      categories: "id, budget_id, sort_order, assigned_to",
+    });
+    // v5: index reminder_days_before on trips for reminder queries
+    this.version(5).stores({
+      trips: "id, household_id, status, start_date, reminder_days_before",
+    });
+    // v6: recurring payments (bills, fees, contributions)
+    this.version(6).stores({
+      recurring_payments: "id, household_id, active, due_day, frequency",
     });
   }
 }
@@ -75,5 +99,6 @@ export async function clearAllData() {
     db.transactions.clear(),
     db.trips.clear(),
     db.itinerary_items.clear(),
+    db.recurring_payments.clear(),
   ]);
 }

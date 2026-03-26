@@ -8,11 +8,23 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { AppShell } from "@/components/layout/AppShell";
 import { AmountInput } from "@/components/shared/AmountInput";
 import { db } from "@/db";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { useAppStore, useActiveBudget, useCategories } from "@/store";
+import { useAppStore, useActiveBudget, useCategories, useHousehold } from "@/store";
+import type { HouseholdMember } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // ─── Presets ─────────────────────────────────────────────────────────────────
@@ -40,6 +52,7 @@ export default function EditCategoryPage({
   const activeBudget = useActiveBudget();
   const categories = useCategories();
   const { setCategories } = useAppStore();
+  const household = useHousehold();
 
   const category = categories.find((c) => c.id === id);
   const parentCat = category?.parent_id
@@ -52,6 +65,14 @@ export default function EditCategoryPage({
   const [plannedAmount, setPlannedAmount] = useState(category?.planned_amount ?? 0);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [members, setMembers] = useState<HouseholdMember[]>([]);
+  const [assignedTo, setAssignedTo] = useState<string | null>(category?.assigned_to ?? null);
+
+  // Load household members
+  useEffect(() => {
+    if (!household?.id) return;
+    db.members.where("household_id").equals(household.id).toArray().then(setMembers);
+  }, [household?.id]);
 
   // Sync state if category loads after mount
   useEffect(() => {
@@ -60,6 +81,7 @@ export default function EditCategoryPage({
       setIcon(category.icon);
       setColor(category.color);
       setPlannedAmount(category.planned_amount);
+      setAssignedTo(category.assigned_to ?? null);
     }
   }, [category?.id]);
 
@@ -88,6 +110,7 @@ export default function EditCategoryPage({
         icon,
         color,
         planned_amount: plannedAmount,
+        assigned_to: assignedTo,
       };
 
       await db.categories.update(id, updates);
@@ -246,24 +269,78 @@ export default function EditCategoryPage({
               className="w-full"
             />
           </div>
+
+          {/* Assignee */}
+          {members.length > 0 && (
+            <div className="space-y-2">
+              <Label>Assign to</Label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setAssignedTo(null)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-sm border-2 transition-all",
+                    assignedTo === null
+                      ? "border-primary bg-primary/10 font-medium"
+                      : "border-transparent bg-muted hover:border-muted-foreground"
+                  )}
+                >
+                  Shared
+                </button>
+                {members.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setAssignedTo(m.id)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-sm border-2 transition-all",
+                      assignedTo === m.id
+                        ? "border-primary bg-primary/10 font-medium"
+                        : "border-transparent bg-muted hover:border-muted-foreground"
+                    )}
+                  >
+                    👤 {m.display_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
         <div className="flex gap-3">
-          <Button
-            variant="outline"
-            size="icon"
-            className="text-destructive hover:bg-destructive/10 shrink-0"
-            onClick={handleDelete}
-            disabled={deleting || saving}
-            title="Delete category"
-          >
-            {deleting ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Trash2 size={16} />
-            )}
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="text-destructive hover:bg-destructive/10 shrink-0"
+                disabled={deleting || saving}
+                title="Delete category"
+              >
+                {deleting ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Trash2 size={16} />
+                )}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {category.icon} {category.name}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This category and its budget allocation will be permanently removed. Transactions linked to it will not be deleted.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Button variant="outline" className="flex-1" onClick={() => router.back()}>
             Cancel
           </Button>

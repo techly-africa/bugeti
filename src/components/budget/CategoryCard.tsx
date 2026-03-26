@@ -10,6 +10,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { formatRWF, BUDGET_THRESHOLDS } from "@/lib/constants";
 import { CategoryWithStats } from "@/lib/types";
 import { useT } from "@/hooks/useT";
@@ -24,9 +34,10 @@ const USSD_PAY = "tel:*182*1*1%23";
 
 interface CategoryCardProps {
   category: CategoryWithStats;
+  assigneeName?: string;
 }
 
-export function CategoryCard({ category }: CategoryCardProps) {
+export function CategoryCard({ category, assigneeName }: CategoryCardProps) {
   const t = useT();
   const lang = useLang();
   const router = useRouter();
@@ -36,6 +47,7 @@ export function CategoryCard({ category }: CategoryCardProps) {
 
   const [deleting, setDeleting] = useState(false);
   const [showTip, setShowTip] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const stats = useBudgetStats();
 
@@ -73,9 +85,7 @@ export function CategoryCard({ category }: CategoryCardProps) {
     ? "bg-yellow-400"
     : "bg-green-500";
 
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // Don't trigger card click
-    
+  const handleDelete = async () => {
     const hasChildren = categories.some((c) => c.parent_id === category.id);
     if (hasChildren) {
       toast.error("Remove sub-categories first before deleting.");
@@ -133,6 +143,11 @@ export function CategoryCard({ category }: CategoryCardProps) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {assigneeName && (
+              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full shrink-0">
+                👤 {assigneeName}
+              </span>
+            )}
             <Badge
               variant={isOver ? "destructive" : isWarning ? "outline" : "secondary"}
               className="text-xs"
@@ -153,7 +168,10 @@ export function CategoryCard({ category }: CategoryCardProps) {
                 <Pencil size={14} className="mr-2" />
                 Edit
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
+              <DropdownMenuItem
+                onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+                className="text-destructive focus:text-destructive"
+              >
                 <Trash2 size={14} className="mr-2" />
                 Delete
               </DropdownMenuItem>
@@ -215,6 +233,27 @@ export function CategoryCard({ category }: CategoryCardProps) {
           Pay via MTN MoMo (*182*1*1#)
         </a>
       </div>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {category.icon} {category.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This category and its budget allocation will be permanently removed. Transactions linked to it will not be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -18,7 +18,9 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { signIn, signUp, isSupabaseConfigured } from "@/lib/supabase";
+import { seedDemoData, DEMO_BUDGET_ID } from "@/lib/demo";
 import { useAppStore } from "@/store";
+import { db } from "@/db";
 import { LanguageToggle } from "@/components/shared/LanguageToggle";
 import { DemoBanner } from "@/components/shared/DemoBanner";
 import { Logo } from "@/components/shared/Logo";
@@ -27,9 +29,11 @@ import { useT } from "@/hooks/useT";
 export default function AuthPage() {
   const t = useT();
   const setUser = useAppStore((s) => s.setUser);
+  const setIsDemo = useAppStore((s) => s.setIsDemo);
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
 
   // Sign In state
   const [siEmail, setSiEmail] = useState("");
@@ -42,7 +46,36 @@ export default function AuthPage() {
   const [suName, setSuName] = useState("");
   const [suShowPw, setSuShowPw] = useState(false);
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleDemo = async () => {
+    setDemoLoading(true);
+    try {
+      const { user, household, budget, trips, ikiminas, contributions, customBudgets } = await seedDemoData();
+      // Load main budget data fresh from DB so sorts are correct
+      const [cats, txs] = await Promise.all([
+        db.categories.where("budget_id").equals(DEMO_BUDGET_ID).sortBy("sort_order"),
+        db.transactions.where("budget_id").equals(DEMO_BUDGET_ID).sortBy("date").then((a) => a.toReversed()),
+      ]);
+      setUser(user);
+      setIsDemo(true);
+      useAppStore.setState({
+        household,
+        activeBudget: budget,
+        categories: cats,
+        transactions: txs,
+        trips,
+        ikiminas,
+        ikiminaContributions: contributions,
+        customBudgets,
+      });
+      router.push("/dashboard");
+    } catch {
+      toast.error("Failed to load demo.");
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
+  const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     try {
@@ -56,7 +89,7 @@ export default function AuthPage() {
       if (data.user) {
         setUser({
           id: data.user.id,
-          email: data.user.email!,
+          email: data.user.email ?? siEmail,
           display_name:
             data.user.user_metadata?.display_name ?? siEmail.split("@")[0],
           preferred_language: "en",
@@ -71,7 +104,7 @@ export default function AuthPage() {
     }
   };
 
-  const handleSignUp = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     try {
@@ -86,7 +119,7 @@ export default function AuthPage() {
 
       setUser({
         id: data.user.id,
-        email: data.user.email!,
+        email: data.user.email ?? suEmail,
         display_name: suName,
         preferred_language: "en",
         created_at: data.user.created_at,
@@ -183,7 +216,7 @@ export default function AuthPage() {
                     <button
                       type="button"
                       onClick={() => setSiShowPw((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors rounded"
                       tabIndex={-1}
                     >
                       {siShowPw ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -245,7 +278,7 @@ export default function AuthPage() {
                     <button
                       type="button"
                       onClick={() => setSuShowPw((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors rounded"
                       tabIndex={-1}
                     >
                       {suShowPw ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -264,11 +297,27 @@ export default function AuthPage() {
         </Tabs>
       </Card>
 
-      <p className="text-xs text-muted-foreground mt-6 text-center">
-        {isSupabaseConfigured()
-          ? "Works offline · Family-friendly · RWF native"
-          : "🧪 Demo mode — any email & password works"}
-      </p>
+      {/* Try Demo */}
+      <div className="mt-5 flex flex-col items-center gap-2 w-full max-w-sm">
+        <div className="flex items-center gap-3 w-full">
+          <div className="flex-1 h-px bg-border" />
+          <span className="text-xs text-muted-foreground">or</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+        <button
+          onClick={handleDemo}
+          disabled={demoLoading}
+          className="w-full flex items-center justify-center gap-2 h-11 rounded-xl border-2 border-dashed border-primary/40 text-primary font-semibold text-sm hover:bg-primary/5 transition-colors disabled:opacity-60"
+        >
+          {demoLoading
+            ? <Loader2 size={15} className="animate-spin" />
+            : <span>🧪</span>}
+          Explore with demo data
+        </button>
+        <p className="text-[11px] text-muted-foreground text-center">
+          No sign-up needed · Rwandan family budget · Read &amp; write
+        </p>
+      </div>
     </div>
   );
 }
